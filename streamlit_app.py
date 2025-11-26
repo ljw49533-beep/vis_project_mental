@@ -96,7 +96,6 @@ st.title("KCHS | 나이 10살 구간, 시간/소득/수면 분석 대시보드")
 if '만 나이' in df.columns:
     age_min = int(np.nanmin(df['만 나이']))
     age_max = int(np.nanmax(df['만 나이']))
-    # 10살 단위 구간 경계
     bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
     df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
     df['나이 구간(10살 단위)_str'] = df['나이 구간(10살 단위)'].astype(str)
@@ -187,38 +186,4 @@ for label in display_cols:
                 soc_clean,
                 x=soc_clean,
                 title='가구소득 응답 분포(정상 구간, 이상치 제거)',
-                nbins=40
-            )
-            fig_soc.update_xaxes(range=[minval, maxval])
-            st.plotly_chart(fig_soc, use_container_width=True)
-
-    # 시간 변수: 카테고리 순서 지정 후 히스토그램
-    elif label in ['잠자는 시각', '기상 시각']:
-        times_sorted = time_order_sort(filtered[label].dropna().unique())
-        if len(times_sorted) > 0:
-            fig = px.histogram(
-                filtered,
-                x=label,
-                category_orders={label: times_sorted},
-                title=f"{label} (시간순 정렬)"
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    # 일반 수치 변수: 기본 히스토그램
-    elif (
-        filtered[label].notna().sum() > 0
-        and pd.api.types.is_numeric_dtype(filtered[label])
-    ):
-        fig = px.histogram(
-            filtered,
-            x=label,
-            title=f"{label} 응답 분포"
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-# 안내 문구
-st.info(
-    "만 나이는 10살 단위 구간으로만 분포와 필터를 제공하며, "
-    "시간값은 정렬된 히스토그램으로, 가구소득 등은 이상치를 제거한 뒤 "
-    "명확한 응답 분포를 확인할 수 있습니다."
-)
+                nb
