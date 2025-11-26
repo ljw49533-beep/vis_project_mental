@@ -265,7 +265,7 @@ with tab_1d:
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
-        # 축 후보
+        # 축 후보 (시간·수면·소득 모두 포함)
         axis_candidates = []
 
         if "나이 구간(10살 단위)" in df.columns:
@@ -283,19 +283,18 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        # 수치형 축 후보
         for label in [
-            "하루 평균 수면시간(주중)",   # 코드값 그대로 범주형 취급
-            "하루 평균 수면시간(주말)",   # 코드값 그대로 범주형 취급
+            "하루 평균 수면시간(주중)",   # 코드값 그대로 범주형
+            "하루 평균 수면시간(주말)",   # 코드값 그대로 범주형
             "수면 소요시간(분)",        # 0~360, 15분 bin
-            "가구소득",
+            "가구소득",               # 0~20000, 2000단위 bin
         ]:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        x_label = st.selectbox("비교할 축(캐릭터/환경/시간·수면 변수)", axis_candidates)
+        x_label = st.selectbox("비교할 축(캐릭터/환경/시간·수면·소득 변수)", axis_candidates)
 
-        # 타깃 지표 후보
+        # 타깃 지표 후보 (한글 문항만)
         dep_candidates = []
         for label in [
             "우울감 경험 여부",
@@ -343,8 +342,29 @@ with tab_1d:
                 # 주중/주말 평균 수면시간은 코드값 그대로 범주형
                 group_col = x_label
 
+            elif x_label == "가구소득":
+                # 가구소득: 0~20000, 2000만원 단위 구간 + 문자열 레이블
+                df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
+                df_tmp = df_tmp.dropna(subset=[x_label, target_label])
+                inc_clean = df_tmp[x_label]
+                # 이상치 제거
+                out_vals = [90000, 99999, 77777, 88888, 9999]
+                inc_clean = inc_clean[~inc_clean.isin(out_vals)]
+                inc_clean = inc_clean[(inc_clean >= 0) & (inc_clean <= 20000)]
+                df_tmp = df_tmp.loc[inc_clean.index]
+                if df_tmp.empty:
+                    st.warning("0~20000만원 구간 내 가구소득 데이터가 없습니다.")
+                    st.stop()
+                bins = list(range(0, 20001, 2000))  # 0,2000,...,20000
+                labels = [f"{b}-{b+2000}" for b in bins[:-1]]
+                df_tmp["축구간"] = pd.cut(
+                    df_tmp[x_label], bins=bins, labels=labels, right=False
+                )
+                df_tmp = df_tmp.dropna(subset=["축구간"])
+                group_col = "축구간"
+
             else:
-                # 나이, 소득 등
+                # 나이, 기타 수치형
                 x_col = df[x_label]
                 if pd.api.types.is_numeric_dtype(x_col):
                     bins = st.slider("축 구간 수", 4, 20, 8)
