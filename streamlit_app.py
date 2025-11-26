@@ -102,7 +102,7 @@ st.set_page_config(
 st.title("KCHS | 전체 분포 확인 대시보드")
 
 # --------------------
-# 나이 10살 단위 구간 생성 (필터는 제거, 분포만 사용)
+# 나이 10살 단위 구간 생성
 # --------------------
 if "만 나이" in df.columns:
     age_min = int(np.nanmin(df["만 나이"]))
@@ -124,7 +124,7 @@ st.subheader("데이터 미리보기")
 st.dataframe(df.head(30))
 
 # --------------------
-# 나이 구간(10살 단위) 분포
+# 10살 단위 나이 분포
 # --------------------
 if "나이 구간(10살 단위)_str" in df.columns:
     st.subheader("10살 단위 나이별 분포")
@@ -136,69 +136,29 @@ if "나이 구간(10살 단위)_str" in df.columns:
     st.plotly_chart(fig_age, use_container_width=True)
 
 # --------------------
-# 나머지 변수 히스토그램 나열
+# 가구소득 분포 (이상치 제거)
 # --------------------
-for label in display_cols:
-    if label not in df.columns:
-        continue
-
-    # 만 나이는 이미 10살 구간으로 봤으니 생략
-    if label == "만 나이":
-        continue
-
-    # 가구소득: 이상치 제거 후 0~20000만 히스토그램
-    if label == "가구소득":
-        soc_col = df[label]
-        outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
-        minval, maxval = 0, 20000
-        soc_clean = soc_col[~soc_col.isin(outlier_vals)]
-        soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
-        if len(soc_clean) > 0:
-            st.subheader("가구소득(0~20000만원, 이상치 제거) 분포")
-            fig_soc = px.histogram(
-                soc_clean,
-                x=soc_clean,
-                nbins=40,
-            )
-            fig_soc.update_xaxes(range=[minval, maxval])
-            st.plotly_chart(fig_soc, use_container_width=True)
-
-    # 시간 변수: 시간 순서대로 카테고리 히스토그램
-    elif label in ["잠자는 시각", "기상 시각"]:
-        times_sorted = time_order_sort(df[label].dropna().unique())
-        if len(times_sorted) > 0:
-            st.subheader(f"{label} 분포 (시간순 정렬)")
-            fig = px.histogram(
-                df,
-                x=label,
-                category_orders={label: times_sorted},
-            )
-            st.plotly_chart(fig, use_container_width=True)
-
-    # 수치형 변수: 기본 히스토그램
-    elif pd.api.types.is_numeric_dtype(df[label]) and df[label].notna().sum() > 0:
-        st.subheader(f"{label} 분포")
-        fig = px.histogram(
-            df,
-            x=label,
+if "가구소득" in df.columns:
+    st.subheader("가구소득(0~20000만원, 이상치 제거) 분포")
+    soc_col = df["가구소득"]
+    outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
+    minval, maxval = 0, 20000
+    soc_clean = soc_col[~soc_col.isin(outlier_vals)]
+    soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
+    if len(soc_clean) > 0:
+        fig_soc = px.histogram(
+            soc_clean,
+            x=soc_clean,
             nbins=40,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        fig_soc.update_xaxes(range=[minval, maxval])
+        st.plotly_chart(fig_soc, use_container_width=True)
 
-    # 범주형 변수: 막대그래프(빈도)
-    elif df[label].notna().sum() > 0:
-        st.subheader(f"{label} 분포")
-        fig = px.histogram(
-            df,
-            x=label,
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-st.info("이 페이지는 사이드바 필터 없이, 전체 데이터의 분포를 한눈에 보는 용도입니다.")
-
-# 1) 수면 소요시간(분) - 이상치 제거 + 10분 단위 구간 (0~360분)
+# --------------------
+# 수면 소요시간(분): 이상치 제거 + 15분 단위 구간 (0~360분)
+# --------------------
 if "수면 소요시간(분)" in df.columns:
-    st.subheader("수면 소요시간(분) 분포 (0~360분, 10분 단위, 이상치 제거)")
+    st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위, 이상치 제거)")
 
     sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce")
     sleep_dur = sleep_dur.dropna()
@@ -208,23 +168,58 @@ if "수면 소요시간(분)" in df.columns:
         sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
 
         if len(sleep_dur_clean) > 0:
-            # 10분 단위 구간 생성: 0~360
-            bins = list(range(0, 361, 10))  # 0, 10, ..., 360
-            labels = [f"{b}-{b+10}" for b in bins[:-1]]
+            # 15분 단위 구간: 0,15,...,360
+            bins = list(range(0, 361, 15))
+            labels = [f"{b}-{b+15}" for b in bins[:-1]]
 
             sleep_bins = pd.cut(
                 sleep_dur_clean, bins=bins, labels=labels, right=False
             )
 
             sleep_df = pd.DataFrame(
-                {"수면 소요시간(10분 구간)": sleep_bins}
+                {"수면 소요시간(15분 구간)": sleep_bins}
             ).dropna()
 
             fig_sd = px.histogram(
                 sleep_df,
-                x="수면 소요시간(10분 구간)",
-                title="수면 소요시간(분) 분포 (0~360분, 10분 단위 구간)",
+                x="수면 소요시간(15분 구간)",
+                title="수면 소요시간(분) 분포 (0~360분, 15분 단위 구간)",
             )
             st.plotly_chart(fig_sd, use_container_width=True)
         else:
             st.write("0~360분 구간 내 수면 소요시간 데이터가 거의 없습니다.")
+
+# --------------------
+# 하루 평균 수면시간(주중/주말) 기본 분포
+# --------------------
+for col in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
+    if col in df.columns:
+        st.subheader(f"{col} 분포")
+        col_val = pd.to_numeric(df[col], errors="coerce").dropna()
+        if len(col_val) > 0:
+            fig_col = px.histogram(
+                col_val,
+                x=col_val,
+                nbins=40,
+            )
+            st.plotly_chart(fig_col, use_container_width=True)
+
+# --------------------
+# 시간 변수(잠자는 시각, 기상 시각) 분포
+# --------------------
+for label in ["잠자는 시각", "기상 시각"]:
+    if label in df.columns:
+        times_sorted = time_order_sort(df[label].dropna().unique())
+        if len(times_sorted) > 0:
+            st.subheader(f"{label} 분포 (시간순 정렬)")
+            fig_t = px.histogram(
+                df,
+                x=label,
+                category_orders={label: times_sorted},
+            )
+            st.plotly_chart(fig_t, use_container_width=True)
+
+st.info(
+    "이 페이지는 사이드바 필터 없이, 전체 데이터의 분포를 한눈에 보기 위한 구조 파악용 페이지입니다. "
+    "수면 소요시간(분)은 0~360분(6시간)만 남기고 15분 단위로 구간화하여 표시했습니다."
+)
