@@ -29,7 +29,7 @@ column_labels = {
     "mtb_02z1": "우울감으로 인한 정신상담 여부",
     "mtd_01z1": "자살생각 경험 여부",
     "mtd_02z1": "자살생각으로 인한 정신상담 여부",
-    "수면 소요시간(분)": "수면 소요시간(분)",
+    "mtc_06z1": "수면 소요시간(분)",
     "잠자는 시각": "잠자는 시각",
     "기상 시각": "기상 시각",
 }
@@ -68,7 +68,7 @@ response_maps = {
 }
 
 # --------------------
-# 라벨 컬럼 생성 (만 나이는 시각화/필터용 리스트에서 제외할 예정)
+# 라벨 컬럼 생성
 # --------------------
 display_cols = []
 for code, label in column_labels.items():
@@ -96,13 +96,13 @@ def time_order_sort(times):
 # 페이지 설정
 # --------------------
 st.set_page_config(
-    page_title="KCHS 분석 대시보드(나이 구간·시간순·이상치 제거)",
+    page_title="KCHS 분석 대시보드(전체 분포)",
     layout="wide",
 )
-st.title("KCHS | 나이 10살 구간, 시간/소득/수면 분석 대시보드")
+st.title("KCHS | 전체 분포 확인 대시보드")
 
 # --------------------
-# 나이 10살 단위 구간화 + 필터
+# 나이 10살 단위 구간 생성 (필터는 제거, 분포만 사용)
 # --------------------
 if "만 나이" in df.columns:
     age_min = int(np.nanmin(df["만 나이"]))
@@ -114,93 +114,41 @@ if "만 나이" in df.columns:
         str(interval)
         for interval in sorted(df["나이 구간(10살 단위)"].dropna().unique())
     ]
-    age_selected = st.sidebar.multiselect(
-        "나이 구간(10살 단위)", age_bins_str, default=age_bins_str
-    )
 else:
-    age_selected = []
-
-# 만 나이 자체는 필터/그래프 대상에서 제거
-if "만 나이" in display_cols:
-    display_cols.remove("만 나이")
+    age_bins_str = []
 
 # --------------------
-# 나머지 변수 필터링
+# 데이터 미리보기
 # --------------------
-st.sidebar.header("전체 설문문항 필터")
-filters = {}
-for label in display_cols:
-    if label not in df.columns:
-        continue
-
-    options = [v for v in df[label].dropna().unique()]
-
-    if label in ["잠자는 시각", "기상 시각"]:
-        sorted_options = time_order_sort(options)
-        filters[label] = st.sidebar.multiselect(
-            label, sorted_options, default=sorted_options
-        )
-    elif (
-        "분" in label
-        and pd.api.types.is_numeric_dtype(df[label])
-        and len(options) > 10
-    ):
-        min_val, max_val = float(min(options)), float(max(options))
-        filters[label] = st.sidebar.slider(
-            label, min_val, max_val, (min_val, max_val)
-        )
-    else:
-        filters[label] = st.sidebar.multiselect(
-            label, sorted(options), default=sorted(options)
-        )
+st.subheader("데이터 미리보기")
+st.dataframe(df.head(30))
 
 # --------------------
-# 필터 적용
+# 나이 구간(10살 단위) 분포
 # --------------------
-base_cols = display_cols + ["나이 구간(10살 단위)", "나이 구간(10살 단위)_str"]
-base_cols = [c for c in base_cols if c in df.columns]
-filtered = df[base_cols].copy()
-
-if age_selected and "나이 구간(10살 단위)_str" in filtered.columns:
-    filtered = filtered[filtered["나이 구간(10살 단위)_str"].isin(age_selected)]
-
-for label, sel in filters.items():
-    if label not in filtered.columns:
-        continue
-    col = filtered[label]
-    if isinstance(sel, tuple) and pd.api.types.is_numeric_dtype(col):
-        filtered = filtered[(col >= sel[0]) & (col <= sel[1])]
-    elif isinstance(sel, list) and len(sel) < len(df[label].dropna().unique()):
-        filtered = filtered[col.isin(sel)]
-
-# --------------------
-# 요약 정보 + 미리보기
-# --------------------
-st.metric("필터 적용 후 응답자 수", filtered.shape[0])
-st.dataframe(filtered.head(30))
-
-# --------------------
-# 나이 구간(10살 단위) 분포만 시각화
-# --------------------
-if "나이 구간(10살 단위)_str" in filtered.columns:
+if "나이 구간(10살 단위)_str" in df.columns:
+    st.subheader("10살 단위 나이별 분포")
     fig_age = px.histogram(
-        filtered,
+        df,
         x="나이 구간(10살 단위)_str",
-        title="10살 단위 나이별 분포",
         category_orders={"나이 구간(10살 단위)_str": age_bins_str},
     )
     st.plotly_chart(fig_age, use_container_width=True)
 
 # --------------------
-# 나머지 변수 시각화 (만 나이 제외)
+# 나머지 변수 히스토그램 나열
 # --------------------
 for label in display_cols:
-    if label not in filtered.columns:
+    if label not in df.columns:
         continue
 
-    # 가구소득: 이상치 제거 후 0~20000 구간만 히스토그램
+    # 만 나이는 이미 10살 구간으로 봤으니 생략
+    if label == "만 나이":
+        continue
+
+    # 가구소득: 이상치 제거 후 0~20000만 히스토그램
     if label == "가구소득":
-        soc_col = filtered[label]
+        soc_col = df[label]
         outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
         minval, maxval = 0, 20000
         soc_clean = soc_col[~soc_col.isin(outlier_vals)]
@@ -210,40 +158,40 @@ for label in display_cols:
             fig_soc = px.histogram(
                 soc_clean,
                 x=soc_clean,
-                title="가구소득 응답 분포(정상 구간, 이상치 제거)",
                 nbins=40,
             )
             fig_soc.update_xaxes(range=[minval, maxval])
             st.plotly_chart(fig_soc, use_container_width=True)
 
-    # 시간 변수: 카테고리 순서 지정 후 히스토그램
+    # 시간 변수: 시간 순서대로 카테고리 히스토그램
     elif label in ["잠자는 시각", "기상 시각"]:
-        times_sorted = time_order_sort(filtered[label].dropna().unique())
+        times_sorted = time_order_sort(df[label].dropna().unique())
         if len(times_sorted) > 0:
+            st.subheader(f"{label} 분포 (시간순 정렬)")
             fig = px.histogram(
-                filtered,
+                df,
                 x=label,
                 category_orders={label: times_sorted},
-                title=f"{label} (시간순 정렬)",
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # 일반 수치 변수
-    elif (
-        filtered[label].notna().sum() > 0
-        and pd.api.types.is_numeric_dtype(filtered[label])
-    ):
+    # 수치형 변수: 기본 히스토그램
+    elif pd.api.types.is_numeric_dtype(df[label]) and df[label].notna().sum() > 0:
+        st.subheader(f"{label} 분포")
         fig = px.histogram(
-            filtered,
+            df,
             x=label,
-            title=f"{label} 응답 분포",
+            nbins=40,
         )
         st.plotly_chart(fig, use_container_width=True)
 
-# --------------------
-# 안내 문구
-# --------------------
-st.info(
-    "만 나이는 10살 단위 구간만 사용해 필터/그래프를 제공하고, "
-    "개별 만 나이(1살 단위)는 필터와 그래프에서 모두 제거했습니다."
-)
+    # 범주형 변수: 막대그래프(빈도)
+    elif df[label].notna().sum() > 0:
+        st.subheader(f"{label} 분포")
+        fig = px.histogram(
+            df,
+            x=label,
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+st.info("이 페이지는 사이드바 필터 없이, 전체 데이터의 분포를 한눈에 보는 용도입니다.")
