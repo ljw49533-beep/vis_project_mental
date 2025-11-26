@@ -51,24 +51,33 @@ for code, label in column_labels.items():
         df[label] = df[code]
         display_cols.append(label)
 
-st.set_page_config(page_title="KCHS 30분단위 시각/소요시간 대시보드", layout="wide")
-st.title("KCHS: 30분 단위 시각/수면 통합, 문항·의미 분석 대시보드")
+st.set_page_config(page_title="KCHS 수면·기상 30분단위 시간순 대시보드", layout="wide")
+st.title("KCHS 대시보드 | 수면·기상 시각 시간순 정렬 + 필터/분석")
+
+def time_order_sort(times):
+    # HH:MM 형태 문자열을 분으로 변환해서 정렬
+    def time_to_minutes(s):
+        if isinstance(s, str) and ':' in s:
+            h, m = s.split(":")
+            return int(h)*60 + int(m)
+        return float('inf')
+    return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
 for label in display_cols:
     if label not in df.columns: continue
     options = [v for v in df[label].dropna().unique()]
-    # 소요시간·주중/주말 수면시간은 슬라이더!
-    if '분' in label and pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
+    # 시간순 정렬 (잠자는, 기상 시각)
+    if label in ['잠자는 시각', '기상 시각']:
+        sorted_options = time_order_sort(options)
+        filters[label] = st.sidebar.multiselect(label, sorted_options, default=sorted_options)
+    # 분 단위·수면시간 등은 슬라이더
+    elif '분' in label and pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
         min_val, max_val = float(min(options)), float(max(options))
         filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
-    # 30분단위 시각은 카테고리 멀티셀렉트
-    elif label in ['잠자는 시각', '기상 시각']:
-        options = sorted([v for v in df[label].dropna().unique()])
-        filters[label] = st.sidebar.multiselect(label, options, default=options)
     else:
-        filters[label] = st.sidebar.multiselect(label, options, default=options)
+        filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
 filtered = df[display_cols].copy()
 for label, sel in filters.items():
@@ -82,15 +91,15 @@ st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
 for label in display_cols:
-    # 수치형 변수는 히스토그램(수면 소요, 주중/주말 등)
+    # 수면 소요/평균 등은 히스토그램, 시각은 시간순 x축으로 정렬
     if label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
         fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
         st.plotly_chart(fig)
-    # 30분단위 시각은 카운트로 빈도 보기
     elif label in ['잠자는 시각', '기상 시각'] and label in filtered.columns:
-        fig = px.histogram(filtered, x=label, title=f"{label} (30분 단위) 응답 빈도")
+        times_sorted = time_order_sort(filtered[label].dropna().unique())
+        fig = px.histogram(filtered, x=label, category_orders={label: times_sorted}, title=f"{label} (시간순 정렬)")
         st.plotly_chart(fig)
 
 st.info(
-    "⏰ 잠자는 시각/기상 시각은 30분 단위(HH:00/HH:30/HH+1:00)로, 수면 소요시간은 합산 '분' 단위로, 모든 변수/응답은 한글로 표기 및 필터링됩니다."
+    "잠자는 시각·기상 시각은 30분 단위(HH:00, HH:30, HH+1:00)로 시간순으로 자동 정렬된 필터/분포/표가 제공됩니다."
 )
