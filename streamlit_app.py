@@ -24,6 +24,7 @@ df = pd.read_csv("kchs_clean_ready.csv", encoding="utf-8")
 
 # --------------------
 # 코드 → 라벨 매핑
+# (현재 샘플 파일 헤더 기준으로 정의)
 # --------------------
 column_labels = {
     "age": "만 나이",
@@ -43,7 +44,7 @@ column_labels = {
     "mtb_02z1": "우울감으로 인한 정신상담 여부",
     "mtd_01z1": "자살생각 경험 여부",
     "mtd_02z1": "자살생각으로 인한 정신상담 여부",
-    "수면 소요시간(분)": "수면 소요시간(분)",
+    "mtc_06z1": "수면 소요시간(분)",
     "잠자는 시각": "잠자는 시각",
     "기상 시각": "기상 시각",
 }
@@ -66,9 +67,7 @@ response_maps = {
     "fma_04z1": {
         1: "그렇다",
         2: "지금은 아니지만, 과거에 수급자였던 적이 있다",
-        3: "아니다",
-        7: "응답거부",
-        9: "모름",
+        3: "아니다", 7: "응답거부", 9: "모름",
     },
     "mta_01z1": {
         1: "대단히 많이 느낀다",
@@ -114,25 +113,24 @@ if "만 나이" in display_cols:
     display_cols.remove("만 나이")
 
 # --------------------
-# 공통: 이진 우울/자살 변수 생성
+# 공통: 이진 우울/자살 변수 (원시 코드 기반)
 # --------------------
-def yes_no_to_binary(series):
-    # 코드 1=예, 2=아니오, 그 외/결측은 NaN
+def yes_no_to_binary_raw(series):
     s = pd.to_numeric(series, errors="coerce")
     return np.where(s == 1, 1, np.where(s == 2, 0, np.nan))
 
-if "우울감 경험 여부" in df.columns:
-    df["우울_binary"] = yes_no_to_binary(df["우울감 경험 여부"])
+if "mtb_01z1" in df.columns:
+    df["우울_binary"] = yes_no_to_binary_raw(df["mtb_01z1"])
 else:
     df["우울_binary"] = np.nan
 
-if "자살생각 경험 여부" in df.columns:
-    df["자살생각_binary"] = yes_no_to_binary(df["자살생각 경험 여부"])
+if "mtd_01z1" in df.columns:
+    df["자살생각_binary"] = yes_no_to_binary_raw(df["mtd_01z1"])
 else:
     df["자살생각_binary"] = np.nan
 
 # --------------------
-# 사이드바: 전역 필터
+# 사이드바: 전역 필터 (존재하는 컬럼만)
 # --------------------
 st.sidebar.header("전역 필터")
 
@@ -160,7 +158,7 @@ if age_bins_str:
 else:
     selected_age_bins = None
 
-# 가구소득 범위 (이상치 포함 상태에서 범위만 지정)
+# 가구소득 범위
 if "가구소득" in df.columns:
     income_series = pd.to_numeric(df["가구소득"], errors="coerce")
     inc_min = int(np.nanmin(income_series))
@@ -197,11 +195,11 @@ if selected_income is not None and "가구소득" in filtered.columns:
 st.caption(f"전역 필터 적용 후 표본 수: {len(filtered):,}명")
 
 # --------------------
-# 유틸 함수: 그룹별 우울률 계산
+# 유틸: 그룹별 우울률
 # --------------------
 def depression_rate_by(group_col, df_in, target="우울_binary"):
-    temp = df_in.copy()
-    temp = temp[[group_col, target]].dropna()
+    temp = df_in[[group_col, target]].copy()
+    temp = temp.dropna()
     if temp.empty:
         return pd.DataFrame(columns=[group_col, "표본수", "우울률"])
     grp = (
@@ -234,68 +232,57 @@ def depression_rate_by(group_col, df_in, target="우울_binary"):
     ]
 )
 
-# ====================
 # 1. 요약 탭
-# ====================
 with tab_overview:
     st.subheader("전체 우울·자살 지표 요약")
 
     total_n = len(filtered)
-    dep_rate = np.nan
-    sui_rate = np.nan
-    if total_n > 0:
-        dep_rate = np.nanmean(filtered["우울_binary"]) * 100
-        sui_rate = np.nanmean(filtered["자살생각_binary"]) * 100
+    dep_rate = np.nanmean(filtered["우울_binary"]) * 100 if total_n > 0 else np.nan
+    sui_rate = np.nanmean(filtered["자살생각_binary"]) * 100 if total_n > 0 else np.nan
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("표본 수", f"{total_n:,}명")
-    col2.metric("우울감 경험률", f"{dep_rate:.1f}%" if not np.isnan(dep_rate) else "데이터 없음")
-    col3.metric("자살생각 경험률", f"{sui_rate:.1f}%" if not np.isnan(sui_rate) else "데이터 없음")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("표본 수", f"{total_n:,}명")
+    c2.metric("우울감 경험률", f"{dep_rate:.1f}%" if not np.isnan(dep_rate) else "데이터 없음")
+    c3.metric("자살생각 경험률", f"{sui_rate:.1f}%" if not np.isnan(sui_rate) else "데이터 없음")
 
     st.markdown("---")
 
-    # 나이 구간별 우울률
     if "나이 구간(10살 단위)_str" in filtered.columns:
         age_dep = depression_rate_by("나이 구간(10살 단위)_str", filtered)
         if not age_dep.empty:
-            fig_age_dep = px.bar(
+            fig_age = px.bar(
                 age_dep,
                 x="나이 구간(10살 단위)_str",
                 y="우울률",
                 title="나이 구간(10살 단위)별 우울감 경험률(%)",
             )
-            st.plotly_chart(fig_age_dep, use_container_width=True)
+            st.plotly_chart(fig_age, use_container_width=True)
 
-    # 성별별 우울률
     if "성별" in filtered.columns:
         sex_dep = depression_rate_by("성별", filtered)
         if not sex_dep.empty:
-            fig_sex_dep = px.bar(
+            fig_sex = px.bar(
                 sex_dep,
                 x="성별",
                 y="우울률",
                 title="성별별 우울감 경험률(%)",
             )
-            st.plotly_chart(fig_sex_dep, use_container_width=True)
+            st.plotly_chart(fig_sex, use_container_width=True)
 
-# ====================
-# 2. 소득 × 우울 탭
-# ====================
+# 2. 소득 × 우울
 with tab_income:
     st.subheader("가구소득과 우울")
 
     if "가구소득" not in filtered.columns:
         st.warning("가구소득 변수가 없습니다.")
     else:
-        # 이상치 제거용 옵션
-        st.caption("아래 옵션으로 분석용 소득 구간을 정제합니다.")
         col_a, col_b = st.columns(2)
         with col_a:
             remove_outlier = st.checkbox(
                 "이상치 코드(90000, 99999, 77777, 88888, 9999) 제거", value=True
             )
         with col_b:
-            n_bins = st.slider("소득 구간 수", min_value=4, max_value=20, value=8)
+            n_bins = st.slider("소득 구간 수", 4, 20, 8)
 
         inc = pd.to_numeric(filtered["가구소득"], errors="coerce")
         if remove_outlier:
@@ -309,7 +296,6 @@ with tab_income:
         if tmp.empty:
             st.warning("소득·우울 데이터가 충분하지 않습니다.")
         else:
-            # 등폭 구간
             tmp["소득구간"] = pd.cut(
                 tmp["가구소득_clean"],
                 bins=n_bins,
@@ -328,27 +314,19 @@ with tab_income:
                 st.plotly_chart(fig_inc, use_container_width=True)
                 st.dataframe(inc_dep)
 
-# ====================
-# 3. 나이 × 우울 탭
-# ====================
+# 3. 나이 × 우울
 with tab_age:
     st.subheader("나이 구간과 우울")
 
     if "나이 구간(10살 단위)_str" not in filtered.columns:
         st.warning("나이 구간 정보가 없습니다.")
     else:
-        # 비교할 나이 구간 선택
-        age_opts = sorted(
-            filtered["나이 구간(10살 단위)_str"].dropna().unique()
-        )
+        age_opts = sorted(filtered["나이 구간(10살 단위)_str"].dropna().unique())
         selected_compare = st.multiselect(
-            "비교할 나이 구간 선택 (예: 20대와 30대)",
-            age_opts,
-            default=age_opts,
+            "비교할 나이 구간 선택", age_opts, default=age_opts
         )
 
-        tmp = filtered.copy()
-        tmp = tmp[tmp["나이 구간(10살 단위)_str"].isin(selected_compare)]
+        tmp = filtered[filtered["나이 구간(10살 단위)_str"].isin(selected_compare)]
         age_dep = depression_rate_by("나이 구간(10살 단위)_str", tmp)
 
         if age_dep.empty:
@@ -364,20 +342,20 @@ with tab_age:
             st.plotly_chart(fig, use_container_width=True)
             st.dataframe(age_dep)
 
-# ====================
-# 4. 수면 × 우울 탭
-# ====================
+# 4. 수면 × 우울
 with tab_sleep:
     st.subheader("수면과 우울")
 
-    sleep_col = st.selectbox(
-        "수면 관련 변수 선택",
-        [c for c in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)", "수면 소요시간(분)"] if c in filtered.columns],
-    )
+    sleep_candidates = []
+    for c in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)", "수면 소요시간(분)"]:
+        if c in filtered.columns:
+            sleep_candidates.append(c)
 
-    if sleep_col is None:
+    if not sleep_candidates:
         st.warning("수면 관련 변수가 없습니다.")
     else:
+        sleep_col = st.selectbox("수면 관련 변수 선택", sleep_candidates)
+
         tmp = filtered[[sleep_col, "우울_binary"]].copy()
         tmp[sleep_col] = pd.to_numeric(tmp[sleep_col], errors="coerce")
         tmp = tmp.dropna()
@@ -385,8 +363,8 @@ with tab_sleep:
         if tmp.empty:
             st.warning("수면·우울 데이터가 충분하지 않습니다.")
         else:
-            col_l, col_r = st.columns(2)
-            with col_l:
+            c_l, c_r = st.columns(2)
+            with c_l:
                 st.caption("산점도 + 추세선(형태만 보는 용도)")
                 fig_scatter = px.scatter(
                     tmp,
@@ -398,10 +376,12 @@ with tab_sleep:
                 )
                 st.plotly_chart(fig_scatter, use_container_width=True)
 
-            with col_r:
+            with c_r:
                 st.caption("수면시간 구간별 우울률")
                 bins = st.slider("수면시간 구간 수", 4, 20, 8)
-                tmp["수면구간"] = pd.cut(tmp[sleep_col], bins=bins, include_lowest=True)
+                tmp["수면구간"] = pd.cut(
+                    tmp[sleep_col], bins=bins, include_lowest=True
+                )
                 sleep_dep = depression_rate_by("수면구간", tmp)
                 if not sleep_dep.empty:
                     fig_sleep = px.bar(
@@ -413,30 +393,35 @@ with tab_sleep:
                     st.plotly_chart(fig_sleep, use_container_width=True)
                     st.dataframe(sleep_dep)
 
-# ====================
-# 5. 교차탐색 탭
-# ====================
+# 5. 교차탐색
 with tab_explorer:
     st.subheader("사용자 지정 교차탐색")
 
-    # 타깃(우울/자살 관련) 선택
-    target_map = {
-        "우울감 경험 여부": "우울_binary",
-        "자살생각 경험 여부": "자살생각_binary",
-    }
-    target_label = st.selectbox("우울 관련 지표 선택", list(target_map.keys()))
-    target_col = target_map[target_label]
+    target_map = {}
+    if "우울_binary" in filtered.columns:
+        target_map["우울감 경험 여부"] = "우울_binary"
+    if "자살생각_binary" in filtered.columns:
+        target_map["자살생각 경험 여부"] = "자살생각_binary"
 
-    # 설명변수 선택
-    candidate_explanatory = [
-        c for c in ["가구소득", "나이 구간(10살 단위)_str", "성별", "가구유형", "시도명"]
-        if c in filtered.columns
-    ]
-    expl = st.selectbox("설명변수 선택", candidate_explanatory)
-
-    if expl is None:
-        st.warning("설명변수를 선택하세요.")
+    if not target_map:
+        st.warning("우울/자살 관련 변수가 없습니다.")
     else:
+        target_label = st.selectbox("우울 관련 지표 선택", list(target_map.keys()))
+        target_col = target_map[target_label]
+
+        candidate_explanatory = [
+            c
+            for c in [
+                "가구소득",
+                "나이 구간(10살 단위)_str",
+                "성별",
+                "가구유형",
+                "시도명",
+            ]
+            if c in filtered.columns
+        ]
+        expl = st.selectbox("설명변수 선택", candidate_explanatory)
+
         tmp = filtered[[expl, target_col]].copy()
         tmp = tmp.dropna()
 
@@ -444,7 +429,6 @@ with tab_explorer:
             st.warning("선택한 변수 조합에 데이터가 없습니다.")
         else:
             if pd.api.types.is_numeric_dtype(tmp[expl]) and expl != "나이 구간(10살 단위)_str":
-                # 수치형이면 구간으로 나눠서 그룹 분석
                 bins = st.slider("설명변수 구간 수", 4, 20, 8)
                 tmp["설명구간"] = pd.cut(
                     pd.to_numeric(tmp[expl], errors="coerce"),
@@ -469,9 +453,7 @@ with tab_explorer:
                 st.plotly_chart(fig, use_container_width=True)
                 st.dataframe(res)
 
-# ====================
-# 6. 원자료 탭
-# ====================
+# 6. 원자료
 with tab_raw:
     st.subheader("전역 필터 적용 후 원자료 미리보기")
     st.dataframe(filtered.head(50))
