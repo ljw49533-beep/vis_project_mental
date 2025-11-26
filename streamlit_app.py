@@ -2,10 +2,10 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 데이터 로딩 (파일명 맞게 수정)
+# 데이터 파일 이름/경로 맞게 지정
 df = pd.read_csv('kchs_2024.csv', encoding='utf-8')
 
-# 변수명 → 한글 문항명 매핑
+# 변수명 → 한글 질문명
 column_labels = {
     'age': '만 나이',
     'sex': '성별',
@@ -34,44 +34,14 @@ column_labels = {
     'mtc_14z1': '수면을 위한 약 복용'
 }
 
-# 주요 코드형 변수 응답 → 의미 (문항 및 예시)
+# 응답 코드 → 의미
 response_maps = {
     'sex': {1: '남자', 2: '여자'},
-    'CTPRVN_CODE': {
-        11: '서울', 26: '부산', 27: '대구', 28: '인천', 29: '광주', 30: '대전', 31: '울산', 41: '경기',
-        42: '강원', 43: '충북', 44: '충남', 45: '전북', 46: '전남', 47: '경북', 48: '경남', 49: '제주'
-    },
-    'fma_19z3': {
-        1: '1세대 가구',
-        2: '2세대 가구',
-        3: '3세대 이상 가구',
-        4: '부부',
-        5: '한부모',
-        6: '기타',
-        7: '응답거부'
-    },
-    'nue_01z1': {
-        1: '1인',
-        2: '2인',
-        3: '3인',
-        4: '4인',
-        5: '5인',
-        6: '6인 이상',
-        99: '모름'
-    },
-    'fma_04z1': {
-        1: '그렇다',
-        2: '지금은 아니지만, 과거에 수급자였던 적이 있다',
-        3: '아니다',
-        7: '응답거부',
-        9: '모름'
-    },
-    'mta_01z1': {
-        1: '대단히 많이 느낀다',
-        2: '많이 느끼는 편이다',
-        3: '조금 느끼는 편이다',
-        4: '거의 느끼지 않는다'
-    },
+    'CTPRVN_CODE': {11: '서울', 26: '부산', 27: '대구', 28: '인천', 29: '광주', 30: '대전', 31: '울산', 41: '경기', 42: '강원', 43: '충북', 44: '충남', 45: '전북', 46: '전남', 47: '경북', 48: '경남', 49: '제주'},
+    'fma_19z3': {1: '1세대 가구', 2: '2세대 가구', 3: '3세대 이상 가구', 4: '부부', 5: '한부모', 6: '기타', 7: '응답거부'},
+    'nue_01z1': {1: '1인', 2: '2인', 3: '3인', 4: '4인', 5: '5인', 6: '6인 이상', 99: '모름'},
+    'fma_04z1': {1: '그렇다', 2: '지금은 아니지만, 과거에 수급자였던 적이 있다', 3: '아니다', 7: '응답거부', 9: '모름'},
+    'mta_01z1': {1: '대단히 많이 느낀다', 2: '많이 느끼는 편이다', 3: '조금 느끼는 편이다', 4: '거의 느끼지 않는다'},
     'mta_02z1': {1: '예', 2: '아니오'},
     'mtb_01z1': {1: '예', 2: '아니오'},
     'mtb_02z1': {1: '예', 2: '아니오'},
@@ -81,43 +51,51 @@ response_maps = {
     'mtc_14z1': {1: '전혀 없었다', 2: '한 주에 1번', 3: '한 주에 1~2번', 4: '한 주에 3번 이상'},
 }
 
-display_cols = []
+# 변환: 모든 컬럼을 설문 한글 문항명으로 바꿈(응답도 의미화, 숫자형은 그대로)
+display_cols, label_map = [], {}
 for code, label in column_labels.items():
     if code in response_maps and code in df.columns:
         df[label] = df[code].map(response_maps[code])
         display_cols.append(label)
+        label_map[label] = code
     elif code in df.columns:
         df[label] = df[code]
         display_cols.append(label)
+        label_map[label] = code
 
-# 필터: 모든 설문문항(한글) 등장, 빈값/모름/응답거부 제외, 슬라이더/셀렉트 자동 분기
-st.sidebar.header("전체 문항 필터(한글/의미)")
+st.set_page_config(page_title="KCHS 설문 문항 대시보드", layout="wide")
+st.title("산업데이터시각화 프로젝트 | 모든 설문 문항·응답 의미 필터/시각화")
+
+# 모든 설문문항(한글) sidebar에 등장, 기본값은 전체 선택
+st.sidebar.header("전체 설문 문항 필터")
 filters = {}
 for label in display_cols:
     options = [v for v in df[label].dropna().unique() if v not in ['모름', '응답거부', '', None]]
+    # 숫자형은 슬라이더, 나머지는 전체 선택 멀티셀렉트
     if pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
         min_val, max_val = float(min(options)), float(max(options))
         filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
     else:
-        filters[label] = st.sidebar.multiselect(label, options, options)
+        filters[label] = st.sidebar.multiselect(label, options, default=options)
 
-# 필터 적용: 각 변수 모두 반영, 값 없는 경우 무시
+# 필터 적용: 아무것도 건드리지 않으면 전체 데이터가 남도록
 filtered = df[display_cols].copy()
 for label, sel in filters.items():
     if isinstance(sel, tuple) and pd.api.types.is_numeric_dtype(filtered[label]):
         filtered = filtered[(filtered[label] >= sel[0]) & (filtered[label] <= sel[1])]
-    elif len(sel) > 0 and label in filtered.columns:
+    elif isinstance(sel, list) and len(sel) < len(df[label].dropna().unique()):
         filtered = filtered[filtered[label].isin(sel)]
 
-st.title("KCHS 모든 설문문항(한글) 및 응답 의미 시각화")
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
+# 한글 설문문항별 분포 시각화
 for label in display_cols:
     if label in filtered.columns and filtered[label].notna().sum() > 0:
         fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
         st.plotly_chart(fig)
 
 st.info(
-    "모든 변수(25개)는 한글 설문문항 기준으로 sidebar, 표, 그래프에 100% 표현되며, 응답도 모두 사람이 읽는 의미로 자동 변환/필터됩니다. 빈값/모름/응답거부는 자동 제외됩니다."
+    "모든 컬럼은 한글 설문문항으로 표기되며, 응답도 사람이 바로 해석하는 의미로 자동 변환됨.\n"
+    "필터를 모두 선택하면 원본 전체 데이터(20만+)가 유지되고, 특정 조건만 제외 가능합니다."
 )
