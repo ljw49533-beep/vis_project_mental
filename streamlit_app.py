@@ -195,3 +195,36 @@ for label in display_cols:
         st.plotly_chart(fig, use_container_width=True)
 
 st.info("이 페이지는 사이드바 필터 없이, 전체 데이터의 분포를 한눈에 보는 용도입니다.")
+
+# 1) 수면 소요시간(분) - 이상치 제거 + 10분 단위 구간 (0~360분)
+if "수면 소요시간(분)" in df.columns:
+    st.subheader("수면 소요시간(분) 분포 (0~360분, 10분 단위, 이상치 제거)")
+
+    sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce")
+    sleep_dur = sleep_dur.dropna()
+
+    if len(sleep_dur) > 0:
+        # 이상치 제거: 0분 이하, 360분(6시간) 초과 값 제거
+        sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
+
+        if len(sleep_dur_clean) > 0:
+            # 10분 단위 구간 생성: 0~360
+            bins = list(range(0, 361, 10))  # 0, 10, ..., 360
+            labels = [f"{b}-{b+10}" for b in bins[:-1]]
+
+            sleep_bins = pd.cut(
+                sleep_dur_clean, bins=bins, labels=labels, right=False
+            )
+
+            sleep_df = pd.DataFrame(
+                {"수면 소요시간(10분 구간)": sleep_bins}
+            ).dropna()
+
+            fig_sd = px.histogram(
+                sleep_df,
+                x="수면 소요시간(10분 구간)",
+                title="수면 소요시간(분) 분포 (0~360분, 10분 단위 구간)",
+            )
+            st.plotly_chart(fig_sd, use_container_width=True)
+        else:
+            st.write("0~360분 구간 내 수면 소요시간 데이터가 거의 없습니다.")
