@@ -74,6 +74,14 @@ if '만 나이' in df.columns:
     age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins, default=age_bins)
 else:
     age_selected = []
+# 나이 구간 그래프 그리기 부분에서만 아래 추가
+if '나이 구간(10살 단위)' in filtered.columns:
+    # Interval → 문자열 변환
+    filtered['나이 구간(10살 단위)_str'] = filtered['나이 구간(10살 단위)'].astype(str)
+    age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
+    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
+    st.plotly_chart(fig_age)
+
 
 # 나머지 변수 필터링
 st.sidebar.header("전체 설문문항 필터")
