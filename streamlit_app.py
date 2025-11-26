@@ -110,118 +110,12 @@ if "mtd_01z1" in df.columns:
 else:
     df["자살생각_binary"] = np.nan
 
-# ====================
-# 캐릭터 필터 (좌측 사이드바)
-# ====================
-st.sidebar.header("캐릭터 필터")
-
-# 만 나이
-if "만 나이" in df.columns:
-    age_min = int(np.nanmin(df["만 나이"]))
-    age_max = int(np.nanmax(df["만 나이"]))
-    selected_age_range = st.sidebar.slider(
-        "만 나이 범위", min_value=age_min, max_value=age_max, value=(age_min, age_max)
-    )
-else:
-    selected_age_range = None
-
-# 나이 구간
-if "나이 구간(10살 단위)_str" in df.columns:
-    age_bins = sorted(df["나이 구간(10살 단위)_str"].dropna().unique())
-    selected_age_bins = st.sidebar.multiselect(
-        "나이 구간(10살 단위)", age_bins, default=age_bins
-    )
-else:
-    selected_age_bins = None
-
-# 그 외 캐릭터 필터
-character_filters = {}
-
-# 필터에 쓸 캐릭터 라벨 목록
-char_labels = []
-for code, label in character_cols.items():
-    if label in df.columns:
-        char_labels.append(label)
-
-for label in char_labels:
-    if label in ["만 나이", "나이 구간(10살 단위)_str"]:
-        continue
-    col_data = df[label]
-    unique_vals = sorted(col_data.dropna().unique())
-    if len(unique_vals) <= 1:
-        continue
-
-    # 수면 소요시간은 슬라이더, 나머지는 멀티셀렉트
-    if pd.api.types.is_numeric_dtype(col_data) and "수면 소요시간" in label:
-        min_v = float(np.nanmin(col_data))
-        max_v = float(np.nanmax(col_data))
-        character_filters[label] = st.sidebar.slider(
-            label, min_value=min_v, max_value=max_v, value=(min_v, max_v)
-        )
-    else:
-        character_filters[label] = st.sidebar.multiselect(
-            label, unique_vals, default=unique_vals
-        )
+# 캐릭터 라벨 목록
+char_labels = [label for code, label in character_cols.items() if label in df.columns]
 
 # ====================
-# 캐릭터 필터 적용
+# 유틸: 그룹별 값/비율
 # ====================
-filtered = df.copy()
-
-# 만 나이 범위
-if selected_age_range is not None and "만 나이" in filtered.columns:
-    filtered = filtered[
-        (filtered["만 나이"] >= selected_age_range[0])
-        & (filtered["만 나이"] <= selected_age_range[1])
-    ]
-
-# 나이 구간
-if selected_age_bins is not None and "나이 구간(10살 단위)_str" in filtered.columns:
-    filtered = filtered[filtered["나이 구간(10살 단위)_str"].isin(selected_age_bins)]
-
-# 나머지 캐릭터 필터
-for label, cond in character_filters.items():
-    if label not in filtered.columns:
-        continue
-    col = filtered[label]
-    if isinstance(cond, tuple) and pd.api.types.is_numeric_dtype(col):
-        filtered = filtered[(col >= cond[0]) & (col <= cond[1])]
-    elif isinstance(cond, list) and len(cond) < len(col.dropna().unique()):
-        filtered = filtered[col.isin(cond)]
-
-st.caption(f"캐릭터 필터 적용 후 표본 수: {len(filtered):,}명")
-
-# ====================
-# 공통 유틸: 그룹별 우울 지표 요약
-# ====================
-def summarize_depression(df_in, target_label):
-    """
-    target_label: 우울 관련 한글 라벨 또는 '우울_binary' / '자살생각_binary'
-    """
-    if target_label in ["우울_binary", "자살생각_binary"]:
-        target_col = target_label
-        series = df_in[target_col]
-        if series.dropna().empty:
-            return np.nan, np.nan
-        rate = np.nanmean(series) * 100
-        n = series.notna().sum()
-        return rate, n
-
-    # 범주형 응답(예/아니오 등)의 '예' 비율
-    if target_label not in df_in.columns:
-        return np.nan, np.nan
-
-    s = df_in[target_label].astype(str)
-    if s.dropna().empty:
-        return np.nan, np.nan
-    yes_mask = s == "예"
-    if yes_mask.sum() == 0 and s.nunique() > 2:
-        # 스트레스 수준처럼 다범주인 경우, 평균값(코드) 반환은 여기서는 생략
-        return np.nan, s.notna().sum()
-    rate = yes_mask.mean() * 100
-    n = s.notna().sum()
-    return rate, n
-
 def group_rate(df_in, group_col, target_col):
     temp = df_in[[group_col, target_col]].copy().dropna()
     if temp.empty:
@@ -232,43 +126,83 @@ def group_rate(df_in, group_col, target_col):
         .reset_index()
         .rename(columns={"count": "표본수", "mean": "값"})
     )
-    # target이 이진이면 퍼센트로 해석
     if set(np.unique(temp[target_col])) <= {0, 1}:
         grp["값"] = grp["값"] * 100
     return grp
 
 # ====================
-# 탭 구성: 1차원 / 2차원 / 원자료
+# 탭 구성: 구조 / 1D / 2D / 원자료
 # ====================
-tab1, tab2, tab3 = st.tabs(["1차원 비교", "2차원 비교", "원자료"])
+tab_struct, tab1, tab2, tab_raw = st.tabs(
+    ["데이터 구조 보기", "1차원 비교", "2차원 비교", "원자료"]
+)
 
 # --------------------
-# 탭1: 1차원 비교
+# 탭0: 데이터 구조 보기
+# (이전에 쓰던 전체 분포 시각화 느낌으로 최소만 구현)
+# --------------------
+with tab_struct:
+    st.subheader("전체 데이터 구조 보기")
+
+    # 만 나이 분포 (1살 단위, 구조 파악용)
+    if "만 나이" in df.columns:
+        fig_age = px.histogram(
+            df,
+            x="만 나이",
+            nbins=50,
+            title="만 나이 응답 분포 (구조 파악용)",
+        )
+        st.plotly_chart(fig_age, use_container_width=True)
+
+    # 가구소득 분포 (이상치 포함, 구조 파악용)
+    if "가구소득" in df.columns:
+        fig_inc = px.histogram(
+            df,
+            x="가구소득",
+            nbins=60,
+            title="가구소득 응답 분포 (구조 파악용)",
+        )
+        st.plotly_chart(fig_inc, use_container_width=True)
+
+    # 수면시간 분포
+    for c in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)", "수면 소요시간(분)"]:
+        if c in df.columns:
+            fig_sleep = px.histogram(
+                df, x=c, nbins=40, title=f"{c} 분포 (구조 파악용)"
+            )
+            st.plotly_chart(fig_sleep, use_container_width=True)
+
+    st.markdown("위 그래프들은 **필터 없이 전체 데이터 구조**를 보는 용도입니다.")
+
+# --------------------
+# 탭1: 1차원 비교 (축 1개만)
 # --------------------
 with tab1:
     st.subheader("1차원 비교 (축 1개)")
-    if len(filtered) == 0:
-        st.warning("필터 조건에 맞는 데이터가 없습니다.")
+
+    if len(df) == 0:
+        st.warning("데이터가 없습니다.")
     else:
-        # 축 후보: 캐릭터 변수 라벨 + 나이 구간
+        # 축 후보: 나이 구간 + 캐릭터 라벨
         axis_candidates = []
-        if "나이 구간(10살 단위)_str" in filtered.columns:
+        if "나이 구간(10살 단위)_str" in df.columns:
             axis_candidates.append("나이 구간(10살 단위)_str")
         for label in char_labels:
-            if label in filtered.columns and label not in axis_candidates:
+            if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
         x_label = st.selectbox("비교할 축(캐릭터 변수)", axis_candidates)
 
         # 우울 지표 후보
         dep_candidates = list(depression_cols.values()) + ["우울_binary", "자살생각_binary"]
-        dep_candidates = [c for c in dep_candidates if c in filtered.columns]
+        dep_candidates = [c for c in dep_candidates if c in df.columns]
         target_label = st.selectbox("우울 지표 선택", dep_candidates)
 
+        # 1차원 비교에서는 **추가 필터 없음** → 선택한 축만 사용
+
         if x_label and target_label:
-            # 이진 우울 변수 선택 시: 비율 계산
             if target_label in ["우울_binary", "자살생각_binary"]:
-                grp = group_rate(filtered, x_label, target_label)
+                grp = group_rate(df, x_label, target_label)
                 if grp.empty:
                     st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
                 else:
@@ -285,43 +219,43 @@ with tab1:
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(grp)
             else:
-                # 범주형 우울 지표(예/아니오) → '예' 비율을 따로 계산
-                tmp = filtered[[x_label, target_label]].copy().dropna()
-                if tmp.empty:
-                    st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+                # 예/아니오 응답의 '예' 비율
+                tmp = df[[x_label, target_label]].copy().dropna()
+                tmp[target_label] = tmp[target_label].astype(str)
+                tmp["is_yes"] = (tmp[target_label] == "예").astype(float)
+                grp = group_rate(tmp, x_label, "is_yes")
+                if grp.empty:
+                    st.warning("그룹별 결과가 없습니다.")
                 else:
-                    tmp[target_label] = tmp[target_label].astype(str)
-                    tmp["is_yes"] = (tmp[target_label] == "예").astype(float)
-                    grp = group_rate(tmp, x_label, "is_yes")
-                    if grp.empty:
-                        st.warning("그룹별 결과가 없습니다.")
-                    else:
-                        fig = px.bar(
-                            grp,
-                            x=x_label,
-                            y="값",
-                            title=f"{x_label}별 {target_label} '예' 비율(%)",
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                        st.dataframe(grp)
+                    fig = px.bar(
+                        grp,
+                        x=x_label,
+                        y="값",
+                        title=f"{x_label}별 {target_label} '예' 비율(%)",
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.dataframe(grp)
 
 # --------------------
-# 탭2: 2차원 비교
+# 탭2: 2차원 비교 (축 2개만)
 # --------------------
 with tab2:
     st.subheader("2차원 비교 (축 2개)")
 
-    if len(filtered) == 0:
-        st.warning("필터 조건에 맞는 데이터가 없습니다.")
+    if len(df) == 0:
+        st.warning("데이터가 없습니다.")
     else:
-        # 축 후보 (범주형 위주)
+        # 축 후보: 범주형 캐릭터 변수
         axis_candidates = []
-        if "나이 구간(10살 단위)_str" in filtered.columns:
+        if "나이 구간(10살 단위)_str" in df.columns:
             axis_candidates.append("나이 구간(10살 단위)_str")
         for label in char_labels:
-            if label in filtered.columns and not pd.api.types.is_numeric_dtype(filtered[label]):
-                if label not in axis_candidates:
-                    axis_candidates.append(label)
+            if (
+                label in df.columns
+                and not pd.api.types.is_numeric_dtype(df[label])
+                and label not in axis_candidates
+            ):
+                axis_candidates.append(label)
 
         if len(axis_candidates) < 2:
             st.warning("2차원 비교에 사용할 범주형 캐릭터 변수가 2개 이상 필요합니다.")
@@ -333,38 +267,37 @@ with tab2:
                 axis2 = st.selectbox("축 2 (열, Column)", axis_candidates, index=1)
 
             dep_candidates = list(depression_cols.values()) + ["우울_binary", "자살생각_binary"]
-            dep_candidates = [c for c in dep_candidates if c in filtered.columns]
+            dep_candidates = [c for c in dep_candidates if c in df.columns]
             target_label = st.selectbox("우울 지표 선택", dep_candidates, key="dep2d")
+
+            # 2차원 비교에서도 **축 2개 외의 필터는 없음**
 
             if axis1 == axis2:
                 st.warning("축 1과 축 2는 서로 다른 변수를 선택해야 합니다.")
             else:
-                tmp = filtered[[axis1, axis2]].copy()
+                tmp = df[[axis1, axis2]].copy()
+
                 if target_label in ["우울_binary", "자살생각_binary"]:
-                    tmp[target_label] = filtered[target_label]
+                    tmp[target_label] = df[target_label]
                     value_col = target_label
-                    is_binary = True
                 else:
-                    tmp[target_label] = filtered[target_label].astype(str)
+                    tmp[target_label] = df[target_label].astype(str)
                     tmp["is_yes"] = (tmp[target_label] == "예").astype(float)
                     value_col = "is_yes"
-                    is_binary = True
 
                 tmp = tmp[[axis1, axis2, value_col]].dropna()
                 if tmp.empty:
                     st.warning("선택한 변수 조합에 데이터가 없습니다.")
                 else:
-                    # 피벗 테이블 (평균값)
                     pivot = (
                         tmp.groupby([axis1, axis2])[value_col]
                         .mean()
                         .reset_index()
                     )
-                    pivot["값"] = pivot[value_col] * 100 if is_binary else pivot[value_col]
-
+                    pivot["값"] = pivot[value_col] * 100
                     heat = pivot.pivot(index=axis1, columns=axis2, values="값")
 
-                    st.markdown("#### 교차표 (행: 축 1, 열: 축 2)")
+                    st.markdown("#### 교차표 (행: 축 1, 열: 축 2, 값: 비율 %)")
                     st.dataframe(heat)
 
                     fig = px.imshow(
@@ -380,14 +313,14 @@ with tab2:
 # --------------------
 # 탭3: 원자료
 # --------------------
-with tab3:
-    st.subheader("캐릭터 필터 적용 후 원자료 미리보기")
-    st.dataframe(filtered.head(50))
+with tab_raw:
+    st.subheader("원자료 미리보기 (라벨 컬럼 포함)")
+    st.dataframe(df.head(50))
 
-    csv = filtered.to_csv(index=False).encode("utf-8-sig")
+    csv = df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        label="현재 필터 적용 데이터 CSV 다운로드",
+        label="전체 데이터 CSV 다운로드",
         data=csv,
-        file_name="kchs_filtered.csv",
+        file_name="kchs_all.csv",
         mime="text/csv",
     )
