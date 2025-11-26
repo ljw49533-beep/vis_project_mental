@@ -52,9 +52,7 @@ for code, label in column_labels.items():
         df[label] = df[code]
         display_cols.append(label)
 
-st.set_page_config(page_title="KCHS 분포/이상치제거/시간순 대시보드", layout="wide")
-st.title("KCHS | 모든 물리값 정렬·가구소득 분포 가시성 개선")
-
+# 시간값 정렬 함수
 def time_order_sort(times):
     def time_to_minutes(s):
         if isinstance(s, str) and ':' in s:
@@ -63,6 +61,21 @@ def time_order_sort(times):
         return float('inf')
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
+st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·시간순 구간)", layout="wide")
+st.title("KCHS | 나이 10살 구간, 시각값 시간순 정렬·가구소득 구간·수면 분석")
+
+# 나이 10살 단위 구간화
+if '만 나이' in df.columns:
+    age_min = int(np.nanmin(df['만 나이']))
+    age_max = int(np.nanmax(df['만 나이']))
+    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
+    df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
+    age_bins = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
+    age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins, default=age_bins)
+else:
+    age_selected = []
+
+# 나머지 변수 필터링
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
 for label in display_cols:
@@ -77,7 +90,10 @@ for label in display_cols:
     else:
         filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
-filtered = df[display_cols].copy()
+# 필터 적용(나이구간+기타 변수)
+filtered = df[display_cols + ['나이 구간(10살 단위)']].copy()
+if age_selected:
+    filtered = filtered[filtered['나이 구간(10살 단위)'].astype(str).isin(age_selected)]
 for label, sel in filters.items():
     col = filtered[label]
     if isinstance(sel, tuple) and pd.api.types.is_numeric_dtype(col):
@@ -88,28 +104,31 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
+# 나이구간 분포
+if '나이 구간(10살 단위)' in filtered.columns:
+    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)': age_bins})
+    st.plotly_chart(fig_age)
+
+# 나머지 변수 시각화(이전 방식 그대로)
 for label in display_cols:
-    # 가구소득만 특별히 이상치 제거+구간제한(나머지는 기존 방식)
     if label == '가구소득' and label in filtered.columns:
         soc_col = filtered[label]
         outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
-        minval, maxval = 0, 20000  # 분석구간(만원) 지정
+        minval, maxval = 0, 20000
         soc_clean = soc_col[~soc_col.isin(outlier_vals)]
         soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
         st.subheader("가구소득(0~20000만원, 이상치제거) 분포")
         fig_soc = px.histogram(soc_clean, x=soc_clean, title='가구소득 응답 분포(정상 구간, 이상치 제거)', nbins=40)
         fig_soc.update_xaxes(range=[minval, maxval])
         st.plotly_chart(fig_soc)
-    # 시각값(정렬된 x축, 히스토그램)
     elif label in ['잠자는 시각', '기상 시각'] and label in filtered.columns:
         times_sorted = time_order_sort(filtered[label].dropna().unique())
         fig = px.histogram(filtered, x=label, category_orders={label: times_sorted}, title=f"{label} (시간순 정렬)")
         st.plotly_chart(fig)
-    # 수치형 변수 분포(히스토그램)
     elif label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
         fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
         st.plotly_chart(fig)
 
 st.info(
-    "가구소득(0~2억원 내 정상구간)만 이상치(99999 등) 완전제거, 시각·물리값 시간/값 순서대로 모든 분석·분포가 향상!"
+    "만 나이 기준 10살 구간별로 인구 분포, 모든 응답값 시간 및 값 순서대로 자동 분석! 가구소득 등은 이상치·비정상값 제거 후 정상분포만 시각화합니다."
 )
