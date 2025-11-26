@@ -250,7 +250,7 @@ with tab_dist:
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
-# 탭2: 1차원 비교 (시간·수면·소득 포함)
+# 탭2: 1차원 비교
 # ====================================================
 with tab_1d:
     st.title("KCHS | 1차원 비교 (축 1개 vs 우울·스트레스 지표)")
@@ -594,8 +594,9 @@ with tab_help:
             if mode in ["우울감 경험자 기준", "자살생각 경험자 기준"]:
                 base_df = df[df[base_col] == "예"].copy()
             else:
-                # 스트레스 수준 1·2(대단히/많이 느낀다)를 고스트레스 집단으로 정의
-                base_df = df[df[base_col].isin([1, 2, "1", "2"])].copy()
+                # 스트레스 고수준: '대단히 많이 느낀다', '많이 느끼는 편이다'
+                high_stress_vals = ["대단히 많이 느낀다", "많이 느끼는 편이다"]
+                base_df = df[df[base_col].isin(high_stress_vals)].copy()
 
             st.caption(f"기준 집단 표본 수: {len(base_df):,}명")
 
@@ -636,7 +637,6 @@ with tab_help:
                 if tmp.empty:
                     st.warning("선택한 축과 상담 변수 조합에 데이터가 없습니다.")
                 else:
-                    # 축 구간화 로직: 1차원 탭과 거의 동일
                     if axis in ["잠자는 시각", "기상 시각"]:
                         group_col = axis
 
