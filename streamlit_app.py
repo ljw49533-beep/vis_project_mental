@@ -40,13 +40,20 @@ response_maps = {
         4: "부부", 5: "한부모", 6: "기타", 7: "응답거부",
     },
     "nue_01z1": {
-        1: "1인", 2: "2인", 3: "3인", 4: "4인",
-        5: "5인", 6: "6인 이상", 99: "모름",
+        1: "1인",
+        2: "2인",
+        3: "3인",
+        4: "4인",
+        5: "5인",
+        6: "6인 이상",
+        99: "모름",
     },
     "fma_04z1": {
         1: "그렇다",
         2: "지금은 아니지만, 과거에 수급자였던 적이 있다",
-        3: "아니다", 7: "응답거부", 9: "모름",
+        3: "아니다",
+        7: "응답거부",
+        9: "모름",
     },
 }
 
@@ -95,8 +102,8 @@ st.set_page_config(
 st.title("KCHS | 캐릭터 변수 전체 분포 대시보드")
 
 st.markdown(
-    "- 이 페이지는 사람의 캐릭터(인구학·수면·소득 등)를 표현하는 변수들의 전체 분포를 한 번에 보여줍니다.\n"
-    "- 필터 없이 전체 데이터 기준 분포입니다."
+    "- 사람의 캐릭터(인구학·소득·수면 등)를 나타내는 주요 변수들의 전체 분포를 보여줍니다.\n"
+    "- 필터 없이 전체 데이터 기준입니다."
 )
 
 # --------------------
@@ -107,9 +114,8 @@ preview_cols = [label for label in column_labels.values() if label in df.columns
 st.dataframe(df[preview_cols].head(30))
 
 # --------------------
-# 1. 나이 관련 그래프
+# 1. 나이: 10살 단위만
 # --------------------
-
 if "나이 구간(10살 단위)_str" in df.columns:
     st.subheader("나이 구간(10살 단위) 분포")
     fig_age_bin = px.histogram(
@@ -118,7 +124,10 @@ if "나이 구간(10살 단위)_str" in df.columns:
         category_orders={"나이 구간(10살 단위)_str": age_bins_str},
     )
     st.plotly_chart(fig_age_bin, use_container_width=True)
-# 성별: 원그래프
+
+# --------------------
+# 2. 성별: 원그래프
+# --------------------
 if "성별" in df.columns:
     st.subheader("성별 분포 (원그래프)")
     sex_counts = df["성별"].value_counts(dropna=True).reset_index()
@@ -127,21 +136,14 @@ if "성별" in df.columns:
         sex_counts,
         names="성별",
         values="count",
-        hole=0.3,  # 도넛 형태 원하면 유지, 아니면 이 줄 삭제
+        hole=0.3,  # 도넛 형태, 원그래프 원하면 이 줄 삭제
     )
     st.plotly_chart(fig_sex_pie, use_container_width=True)
 
 # --------------------
-# 2. 범주형 캐릭터 변수 (성별, 시도, 세대 유형, 기초생활수급, 가구유형)
+# 3. 시도명, 세대 유형, 기초생활수급자 여부
 # --------------------
-cat_vars = [
-    "시도명",
-    "세대 유형",
-    "기초생활수급자 여부",
-    "가구유형",
-]
-
-for label in cat_vars:
+for label in ["시도명", "세대 유형", "기초생활수급자 여부"]:
     if label in df.columns:
         st.subheader(f"{label} 분포")
         fig_cat = px.histogram(
@@ -151,7 +153,21 @@ for label in cat_vars:
         st.plotly_chart(fig_cat, use_container_width=True)
 
 # --------------------
-# 3. 가구원수 관련 (전체 / 19세 이상)
+# 4. 가구유형 (1~6·99 순서)
+# --------------------
+if "가구유형" in df.columns:
+    st.subheader("가구유형 분포")
+    type_order = ["1인", "2인", "3인", "4인", "5인", "6인 이상", "모름"]
+    present = [v for v in type_order if v in df["가구유형"].dropna().unique()]
+    fig_nue = px.histogram(
+        df,
+        x="가구유형",
+        category_orders={"가구유형": present},
+    )
+    st.plotly_chart(fig_nue, use_container_width=True)
+
+# --------------------
+# 5. 가구원수 (전체 / 19세 이상)
 # --------------------
 for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
     if label in df.columns:
@@ -166,7 +182,7 @@ for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
             st.plotly_chart(fig_num, use_container_width=True)
 
 # --------------------
-# 4. 가구소득 (이상치 제거)
+# 6. 가구소득 (이상치 제거)
 # --------------------
 if "가구소득" in df.columns:
     st.subheader("가구소득(0~20000만원, 이상치 제거) 분포")
@@ -184,7 +200,7 @@ if "가구소득" in df.columns:
         st.plotly_chart(fig_soc, use_container_width=True)
 
 # --------------------
-# 5. 하루 평균 수면시간 (주중 / 주말)
+# 7. 하루 평균 수면시간 (주중 / 주말)
 # --------------------
 for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
     if label in df.columns:
@@ -199,7 +215,7 @@ for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(
             st.plotly_chart(fig_sleep, use_container_width=True)
 
 # --------------------
-# 6. 수면 소요시간(분): 이상치 제거 + 15분 단위 구간 (0~360분)
+# 8. 수면 소요시간(분): 이상치 제거 + 15분 단위 구간 (0~360분)
 # --------------------
 if "수면 소요시간(분)" in df.columns:
     st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위, 이상치 제거)")
@@ -207,7 +223,6 @@ if "수면 소요시간(분)" in df.columns:
     sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce").dropna()
 
     if len(sleep_dur) > 0:
-        # 이상치: 0분 이하, 360분(6시간) 초과 제거
         sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
 
         if len(sleep_dur_clean) > 0:
@@ -232,7 +247,7 @@ if "수면 소요시간(분)" in df.columns:
             st.write("0~360분 구간 내 수면 소요시간 데이터가 거의 없습니다.")
 
 # --------------------
-# 7. 시간 변수: 잠자는 시각 / 기상 시각
+# 9. 시간 변수: 잠자는 시각 / 기상 시각
 # --------------------
 for label in ["잠자는 시각", "기상 시각"]:
     if label in df.columns:
@@ -247,6 +262,6 @@ for label in ["잠자는 시각", "기상 시각"]:
             st.plotly_chart(fig_t, use_container_width=True)
 
 st.info(
-    "위 그래프들은 모두 필터 없이 전체 데이터 기준 분포입니다. "
-    "각 캐릭터 변수의 분포를 한눈에 보고, 이후 우울 지표와의 관계 분석에 활용할 수 있습니다."
+    "각 그래프는 전체 데이터 기준 캐릭터 변수 분포를 보여줍니다. "
+    "이 페이지를 통해 데이터 구조를 파악한 뒤, 우울 지표와의 관계 분석 페이지를 설계하면 됩니다."
 )
