@@ -132,7 +132,10 @@ def group_rate(df_in, group_col, target_col):
 # 2. 탭 구성
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
-tab_dist, tab_1d, tab_2d = st.tabs(["캐릭터·식생활 분포", "1차원 비교", "2차원 비교"])
+tab_dist, tab_1d, tab_2d, tab_help = st.tabs(
+    ["캐릭터·식생활 분포", "1차원 비교", "2차원 비교", "상담 이용률"]
+)
+
 
 # ====================================================
 # 탭1: 캐릭터·식생활 분포
@@ -605,3 +608,141 @@ with tab_2d:
                 title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
             )
             st.plotly_chart(fig, use_container_width=True)
+            # ====================================================
+# 탭3: 상담 이용률 (우울/자살 경험자 중 상담 '예' 비율)
+# ====================================================
+with tab_help:
+    st.title("KCHS | 우울·자살 경험자 중 상담 이용률")
+
+    if len(df) == 0:
+        st.warning("데이터가 없습니다.")
+    else:
+        # 어떤 지표를 기준으로 할지 선택
+        mode = st.radio(
+            "기준 선택",
+            ["우울감 경험자 기준", "자살생각 경험자 기준"],
+            horizontal=True,
+        )
+
+        if mode == "우울감 경험자 기준":
+            base_col = "우울감 경험 여부"
+            help_col = "우울감으로 인한 정신상담 여부"
+        else:
+            base_col = "자살생각 경험 여부"
+            help_col = "자살생각으로 인한 정신상담 여부"
+
+        if base_col not in df.columns or help_col not in df.columns:
+            st.warning("해당 우울/상담 변수 컬럼이 데이터에 없습니다.")
+        else:
+            # 우울(또는 자살생각)을 '예'라고 응답한 사람만 분모 집단으로 사용
+            base_df = df[df[base_col] == "예"].copy()
+            st.caption(f"{base_col} = '예' 인 표본 수: {len(base_df):,}명")
+
+            if len(base_df) == 0:
+                st.warning(f"{base_col} = '예' 응답자가 없습니다.")
+            else:
+                # 축 후보 (1D 탭과 유사)
+                axis_candidates = []
+
+                if "나이 구간(10살 단위)" in base_df.columns:
+                    axis_candidates.append("나이 구간(10살 단위)")
+
+                for label in [
+                    "성별",
+                    "시도명",
+                    "세대 유형",
+                    "기초생활수급자 여부",
+                    "식생활 형편",
+                    "잠자는 시각",
+                    "기상 시각",
+                ]:
+                    if label in base_df.columns and label not in axis_candidates:
+                        axis_candidates.append(label)
+
+                # 수면·소득 같은 수치형은 6구간 구간화해서 사용
+                for label in [
+                    "하루 평균 수면시간(주중)",
+                    "하루 평균 수면시간(주말)",
+                    "수면 소요시간(분)",
+                    "가구소득",
+                ]:
+                    if label in base_df.columns and label not in axis_candidates:
+                        axis_candidates.append(label)
+
+                axis = st.selectbox(
+                    "상담 이용률을 보고 싶은 축 선택", axis_candidates
+                )
+
+                tmp = base_df[[axis, help_col]].copy().dropna()
+                if tmp.empty:
+                    st.warning("선택한 축과 상담 변수 조합에 데이터가 없습니다.")
+                else:
+                    # 축 처리: 시간/수면/소득은 1D 탭과 비슷하게 구간화
+                    if axis in ["잠자는 시각", "기상 시각"]:
+                        group_col = axis
+
+                    elif axis == "수면 소요시간(분)":
+                        tmp[axis] = pd.to_numeric(tmp[axis], errors="coerce")
+                        tmp = tmp.dropna(subset=[axis, help_col])
+                        s = tmp[axis]
+                        s = s[(s > 0) & (s <= 360)]
+                        tmp = tmp.loc[s.index]
+                        bins = list(range(0, 361, 30))  # 30분 단위 정도로 간단히
+                        labels = [f"{b}-{b+30}" for b in bins[:-1]]
+                        tmp["축구간"] = pd.cut(
+                            s, bins=bins, labels=labels, right=False
+                        )
+                        tmp = tmp.dropna(subset=["축구간"])
+                        group_col = "축구간"
+
+                    elif axis in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
+                        # 코드값 그대로 범주형
+                        group_col = axis
+
+                    elif axis == "가구소득":
+                        tmp[axis] = pd.to_numeric(tmp[axis], errors="coerce")
+                        tmp = tmp.dropna(subset=[axis, help_col])
+                        s = tmp[axis]
+                        out_vals = [90000, 99999, 77777, 88888, 9999]
+                        s = s[~s.isin(out_vals)]
+                        s = s[(s >= 0) & (s <= 20000)]
+                        tmp = tmp.loc[s.index]
+                        bins = list(range(0, 20001, 2000))
+                        labels = [f"{b}-{b+2000}" for b in bins[:-1]]
+                        tmp["축구간"] = pd.cut(
+                            s, bins=bins, labels=labels, right=False
+                        )
+                        tmp = tmp.dropna(subset=["축구간"])
+                        group_col = "축구간"
+                    else:
+                        x_col = base_df[axis]
+                        if pd.api.types.is_numeric_dtype(x_col):
+                            tmp[axis] = pd.to_numeric(tmp[axis], errors="coerce")
+                            tmp = tmp.dropna(subset=[axis, help_col])
+                            tmp["축구간"] = pd.cut(
+                                tmp[axis], bins=6, include_lowest=True
+                            )
+                            tmp["축구간"] = tmp["축구간"].astype(str)
+                            group_col = "축구간"
+                        else:
+                            group_col = axis
+
+                    if tmp.empty:
+                        st.warning("구간화 후 남은 데이터가 없습니다.")
+                    else:
+                        # 상담 여부 '예' 비율 계산
+                        s_help = tmp[help_col].astype(str)
+                        tmp["is_yes"] = (s_help == "예").astype(float)
+                        res = group_rate(tmp, group_col, "is_yes")
+                        if res.empty:
+                            st.warning("그룹별 상담 이용률을 계산할 수 없습니다.")
+                        else:
+                            title = f"{axis}별 {base_col}='예' 인 사람 중 {help_col} '예' 비율(%)"
+                            fig = px.bar(
+                                res,
+                                x=group_col,
+                                y="값",
+                                title=title,
+                            )
+                            st.plotly_chart(fig, use_container_width=True)
+                            st.dataframe(res)
