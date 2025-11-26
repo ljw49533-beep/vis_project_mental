@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 
 # 1. 데이터 로드
-df = pd.read_csv('kchs_sleep_mental_selected.csv', encoding='utf-8')
+df = pd.read_csv('kchs_2024.csv', encoding='utf-8')
 
 # 2. 코드→의미 변환 딕셔너리 예시 (필요 컬럼별로 생성)
 mtc_13z1_map = {
