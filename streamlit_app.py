@@ -61,9 +61,9 @@ def time_order_sort(times):
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
 st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·이상치제거)", layout="wide")
-st.title("KCHS | 나이 구간 필터·수면·소득·시각 분석 대시보드")
+st.title("KCHS | 나이 구간분포·수면·소득·시각 분석 대시보드")
 
-# 나이 10살 단위 구간화 + 값 필터링(히스토그램은 그리지 않고 필터만 제공)
+# 나이 10살 단위 구간화 + 값 필터링
 if '만 나이' in df.columns:
     age_min = int(np.nanmin(df['만 나이']))
     age_max = int(np.nanmax(df['만 나이']))
@@ -75,7 +75,7 @@ if '만 나이' in df.columns:
 else:
     age_selected = []
 
-# 기타 변수 사이드바 필터
+# 필터: 나이구간+기타 변수(시각, 수면, 소득 등)
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
 for label in display_cols:
@@ -90,7 +90,6 @@ for label in display_cols:
     else:
         filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
-# 필터 적용(나이구간+기타 변수)
 filtered = df[display_cols + ['나이 구간(10살 단위)', '나이 구간(10살 단위)_str']].copy()
 if age_selected:
     filtered = filtered[filtered['나이 구간(10살 단위)_str'].isin(age_selected)]
@@ -104,7 +103,12 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 시각화: 가구소득, 잠서는/기상시각, 나머지 수치형 변수
+# 나이 10살 구간 분포 그래프(ONLY) - 만 나이 분포(x)
+if '나이 구간(10살 단위)_str' in filtered.columns:
+    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이 구간 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
+    st.plotly_chart(fig_age)
+
+# 나머지 변수 시각화
 for label in display_cols:
     if label == '가구소득' and label in filtered.columns:
         soc_col = filtered[label]
@@ -125,5 +129,5 @@ for label in display_cols:
         st.plotly_chart(fig)
 
 st.info(
-    "나이(만 나이)는 10살 구간필터로만 제공, 모든 주요 변수 응답값/수면소득/시간은 자동정렬 분포로 빠르게 분석·시각화할 수 있습니다."
+    "나이는 10살 단위 구간분포(히스토그램)로만 제공, 모든 주요 변수·분포·정렬·이상치 제거 자동 분석/시각화!"
 )
