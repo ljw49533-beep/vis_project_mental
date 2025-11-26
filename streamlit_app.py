@@ -109,14 +109,6 @@ st.dataframe(df[preview_cols].head(30))
 # --------------------
 # 1. 나이 관련 그래프
 # --------------------
-if "만 나이" in df.columns:
-    st.subheader("만 나이 분포 (1살 단위)")
-    fig_age_raw = px.histogram(
-        df,
-        x="만 나이",
-        nbins=50,
-    )
-    st.plotly_chart(fig_age_raw, use_container_width=True)
 
 if "나이 구간(10살 단위)_str" in df.columns:
     st.subheader("나이 구간(10살 단위) 분포")
@@ -126,12 +118,23 @@ if "나이 구간(10살 단위)_str" in df.columns:
         category_orders={"나이 구간(10살 단위)_str": age_bins_str},
     )
     st.plotly_chart(fig_age_bin, use_container_width=True)
+# 성별: 원그래프
+if "성별" in df.columns:
+    st.subheader("성별 분포 (원그래프)")
+    sex_counts = df["성별"].value_counts(dropna=True).reset_index()
+    sex_counts.columns = ["성별", "count"]
+    fig_sex_pie = px.pie(
+        sex_counts,
+        names="성별",
+        values="count",
+        hole=0.3,  # 도넛 형태 원하면 유지, 아니면 이 줄 삭제
+    )
+    st.plotly_chart(fig_sex_pie, use_container_width=True)
 
 # --------------------
 # 2. 범주형 캐릭터 변수 (성별, 시도, 세대 유형, 기초생활수급, 가구유형)
 # --------------------
 cat_vars = [
-    "성별",
     "시도명",
     "세대 유형",
     "기초생활수급자 여부",
