@@ -81,26 +81,26 @@ for code, label in column_labels.items():
         else:
             df[label] = df[code]
 
-# 만 나이 10살 구간 (표시는 '나이 구간(10살 단위)'로, _str 제거)
+# 만 나이 10살 구간 (표시는 '나이 구간(10살 단위)')
 if "age" in df.columns:
     if "만 나이" not in df.columns:
         df["만 나이"] = df["age"]
     age_min = int(np.nanmin(df["만 나이"]))
     age_max = int(np.nanmax(df["만 나이"]))
     bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
-    df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
-    # 사람이 보기 좋은 문자열로 변환 (예: [10,20) -> "10-20")
+    age_interval = pd.cut(df["만 나이"], bins=bin_edges, right=False)
+
     def interval_to_str(interval):
         if pd.isna(interval):
             return np.nan
         left = int(interval.left)
         right = int(interval.right)
         return f"{left}-{right}"
-    df["나이 구간(10살 단위)"] = df["나이 구간(10살 단위)"].apply(interval_to_str)
-    # 정렬용 리스트 (수치 기준으로 정렬)
+
+    df["나이 구간(10살 단위)"] = age_interval.apply(interval_to_str)
     age_bins_str = sorted(
-        [v for v in df["나이 구간(10살 단위)"].dropna().unique()],
-        key=lambda s: int(s.split("-")[0])
+        df["나이 구간(10살 단위)"].dropna().unique(),
+        key=lambda s: int(s.split("-")[0]),
     )
 else:
     age_bins_str = []
@@ -138,7 +138,7 @@ st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
 tab_dist, tab_1d = st.tabs(["캐릭터·식생활 분포", "1차원 비교"])
 
 # ====================================================
-# 탭1: 캐릭터·식생활 분포
+# 탭1: 캐릭터·식생활 분포 (이전 1페이지)
 # ====================================================
 with tab_dist:
     st.title("KCHS | 캐릭터 및 식생활 형편 분포 대시보드")
@@ -265,7 +265,7 @@ with tab_dist:
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
-# 탭2: 1차원 비교
+# 탭2: 1차원 비교 (시간 변수 포함)
 # ====================================================
 with tab_1d:
     st.title("KCHS | 1차원 비교 (축 1개 vs 우울·스트레스 지표)")
@@ -273,7 +273,7 @@ with tab_1d:
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
-        # 축 후보
+        # 축 후보 (시간 변수 포함)
         axis_candidates = []
 
         if "나이 구간(10살 단위)" in df.columns:
@@ -285,6 +285,8 @@ with tab_1d:
             "세대 유형",
             "기초생활수급자 여부",
             "식생활 형편",
+            "잠자는 시각",
+            "기상 시각",
         ]:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
@@ -298,7 +300,7 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        x_label = st.selectbox("비교할 축(캐릭터/환경 변수)", axis_candidates)
+        x_label = st.selectbox("비교할 축(캐릭터/환경/시간 변수)", axis_candidates)
 
         # 타깃 지표 후보 (한글 문항만)
         dep_candidates = []
@@ -317,25 +319,27 @@ with tab_1d:
 
         st.markdown("##### 결과")
 
-        # 축 처리 (수치형이면 구간화)
-        x_col = df[x_label]
         df_tmp = df[[x_label, target_label]].copy().dropna()
-
         if df_tmp.empty:
             st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
         else:
-            if pd.api.types.is_numeric_dtype(x_col):
-                bins = st.slider("축 구간 수", 4, 20, 8)
-                df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
-                df_tmp = df_tmp.dropna(subset=[x_label, target_label])
-                df_tmp["축구간"] = pd.cut(
-                    df_tmp[x_label],
-                    bins=bins,
-                    include_lowest=True,
-                )
-                group_col = "축구간"
-            else:
+            # 시간 문자열 변수는 항상 범주형으로만 처리
+            if x_label in ["잠자는 시각", "기상 시각"]:
                 group_col = x_label
+            else:
+                x_col = df[x_label]
+                if pd.api.types.is_numeric_dtype(x_col):
+                    bins = st.slider("축 구간 수", 4, 20, 8)
+                    df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
+                    df_tmp = df_tmp.dropna(subset=[x_label, target_label])
+                    df_tmp["축구간"] = pd.cut(
+                        df_tmp[x_label],
+                        bins=bins,
+                        include_lowest=True,
+                    )
+                    group_col = "축구간"
+                else:
+                    group_col = x_label
 
             # 예/아니오 문항인지 확인
             s = df_tmp[target_label].astype(str)
