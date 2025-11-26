@@ -3,30 +3,147 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
+st.set_page_config(page_title="KCHS 우울 분석 (최대 2차원 비교)", layout="wide")
+st.title("KCHS 우울 분석 대시보드 (최대 2차원 비교)")
+
 # =====================================================
-# 공통: 데이터 불러오기
+# 1. 데이터 불러오기
 # =====================================================
 df = pd.read_csv("kchs_clean_ready.csv", encoding="utf-8")
 
 # =====================================================
-# 탭 구성
+# 2. 공통 전처리 (한 번만)
+# =====================================================
+character_cols = {
+    "age": "만 나이",
+    "sex": "성별",
+    "CTPRVN_CODE": "시도명",
+    "mbhld_co": "가구원수 전체",
+    "reside_adult_co": "가구원수 만 19세 이상",
+    "fma_19z3": "세대 유형",
+    "fma_04z1": "기초생활수급자 여부",
+    "fma_13z1": "가구소득",
+    "nue_01z1": "가구유형",
+    "mtc_17z1": "하루 평균 수면시간(주중)",
+    "mtc_18z1": "하루 평균 수면시간(주말)",
+    "mtc_06z1": "수면 소요시간(분)",
+    "잠자는 시각": "잠자는 시각",
+    "기상 시각": "기상 시각",
+}
+
+depression_cols = {
+    "mta_01z1": "주관적 스트레스 수준",
+    "mta_02z1": "스트레스로 인한 정신상담 여부",
+    "mtb_01z1": "우울감 경험 여부",
+    "mtb_02z1": "우울감으로 인한 정신상담 여부",
+    "mtd_01z1": "자살생각 경험 여부",
+    "mtd_02z1": "자살생각으로 인한 정신상담 여부",
+}
+
+response_maps = {
+    "sex": {1: "남자", 2: "여자"},
+    "CTPRVN_CODE": {
+        11: "서울", 26: "부산", 27: "대구", 28: "인천", 29: "광주",
+        30: "대전", 31: "울산", 41: "경기", 42: "강원", 43: "충북",
+        44: "충남", 45: "전북", 46: "전남", 47: "경북", 48: "경남", 49: "제주",
+    },
+    "fma_19z3": {
+        1: "1세대 가구", 2: "2세대 가구", 3: "3세대 이상 가구",
+        4: "부부", 5: "한부모", 6: "기타", 7: "응답거부",
+    },
+    "nue_01z1": {
+        1: "1인", 2: "2인", 3: "3인", 4: "4인",
+        5: "5인", 6: "6인 이상", 99: "모름",
+    },
+    "fma_04z1": {
+        1: "그렇다",
+        2: "지금은 아니지만, 과거에 수급자였던 적이 있다",
+        3: "아니다", 7: "응답거부", 9: "모름",
+    },
+    "mta_01z1": {
+        1: "대단히 많이 느낀다",
+        2: "많이 느끼는 편이다",
+        3: "조금 느끼는 편이다",
+        4: "거의 느끼지 않는다",
+    },
+    "mta_02z1": {1: "예", 2: "아니오"},
+    "mtb_01z1": {1: "예", 2: "아니오"},
+    "mtb_02z1": {1: "예", 2: "아니오"},
+    "mtd_01z1": {1: "예", 2: "아니오"},
+    "mtd_02z1": {1: "예", 2: "아니오"},
+}
+
+# 한글 라벨 컬럼 생성
+for code, label in {**character_cols, **depression_cols}.items():
+    if code in df.columns and label not in df.columns:
+        if code in response_maps:
+            df[label] = df[code].map(response_maps[code])
+        else:
+            df[label] = df[code]
+
+# 만 나이/나이 구간
+if "age" in df.columns:
+    if "만 나이" not in df.columns:
+        df["만 나이"] = df["age"]
+    age_min = int(np.nanmin(df["만 나이"]))
+    age_max = int(np.nanmax(df["만 나이"]))
+    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
+    df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
+    df["나이 구간(10살 단위)_str"] = df["나이 구간(10살 단위)"].astype(str)
+else:
+    age_min = age_max = None
+
+# 우울/자살 이진 변수
+def yes_no_to_binary_raw(series):
+    s = pd.to_numeric(series, errors="coerce")
+    return np.where(s == 1, 1, np.where(s == 2, 0, np.nan))
+
+if "mtb_01z1" in df.columns:
+    df["우울_binary"] = yes_no_to_binary_raw(df["mtb_01z1"])
+if "mtd_01z1" in df.columns:
+    df["자살생각_binary"] = yes_no_to_binary_raw(df["mtd_01z1"])
+
+char_labels = [label for code, label in character_cols.items() if label in df.columns]
+
+# 시간 정렬 함수 (구조 탭에서 사용)
+def time_order_sort(times):
+    def time_to_minutes(s):
+        if isinstance(s, str) and ":" in s:
+            h, m = s.split(":")
+            return int(h) * 60 + int(m)
+        return float("inf")
+    valid_times = [t for t in times if t is not None and pd.notnull(t)]
+    return sorted(valid_times, key=time_to_minutes)
+
+# 그룹 요약 함수
+def group_rate(df_in, group_col, target_col):
+    temp = df_in[[group_col, target_col]].copy().dropna()
+    if temp.empty:
+        return pd.DataFrame(columns=[group_col, "표본수", "값"])
+    grp = (
+        temp.groupby(group_col)[target_col]
+        .agg(["count", "mean"])
+        .reset_index()
+        .rename(columns={"count": "표본수", "mean": "값"})
+    )
+    if set(np.unique(temp[target_col])) <= {0, 1}:
+        grp["값"] = grp["값"] * 100
+    return grp
+
+# =====================================================
+# 3. 탭 구성
 # =====================================================
 tab_struct, tab1, tab2, tab_raw = st.tabs(
     ["데이터 구조 보기", "1차원 비교", "2차원 비교", "원자료"]
 )
 
-# =====================================================
-# 탭0: 데이터 구조 보기 (네가 준 코드 그대로)
-# =====================================================
+# -----------------------------------------------------
+# 탭0: 데이터 구조 보기 (네가 준 구조 코드 기반, df_struct만 사용)
+# -----------------------------------------------------
 with tab_struct:
-    import streamlit as st
-    import pandas as pd
-    import plotly.express as px
-    import numpy as np
+    st.subheader("데이터 구조 보기 (필터 + 분포)")
 
-    # 이 탭 안에서만 쓸 df는 바깥 df를 그대로 사용
     df_struct = df.copy()
-
     column_labels = {
         "age": "만 나이",
         "sex": "성별",
@@ -50,66 +167,23 @@ with tab_struct:
         "기상 시각": "기상 시각",
     }
 
-    response_maps = {
-        "sex": {1: "남자", 2: "여자"},
-        "CTPRVN_CODE": {
-            11: "서울", 26: "부산", 27: "대구", 28: "인천", 29: "광주",
-            30: "대전", 31: "울산", 41: "경기", 42: "강원", 43: "충북",
-            44: "충남", 45: "전북", 46: "전남", 47: "경북", 48: "경남", 49: "제주",
-        },
-        "fma_19z3": {
-            1: "1세대 가구", 2: "2세대 가구", 3: "3세대 이상 가구",
-            4: "부부", 5: "한부모", 6: "기타", 7: "응답거부",
-        },
-        "nue_01z1": {
-            1: "1인", 2: "2인", 3: "3인", 4: "4인",
-            5: "5인", 6: "6인 이상", 99: "모름",
-        },
-        "fma_04z1": {
-            1: "그렇다",
-            2: "지금은 아니지만, 과거에 수급자였던 적이 있다",
-            3: "아니다", 7: "응답거부", 9: "모름",
-        },
-        "mta_01z1": {
-            1: "대단히 많이 느낀다",
-            2: "많이 느끼는 편이다",
-            3: "조금 느끼는 편이다",
-            4: "거의 느끼지 않는다",
-        },
-        "mta_02z1": {1: "예", 2: "아니오"},
-        "mtb_01z1": {1: "예", 2: "아니오"},
-        "mtb_02z1": {1: "예", 2: "아니오"},
-        "mtd_01z1": {1: "예", 2: "아니오"},
-        "mtd_02z1": {1: "예", 2: "아니오"},
-    }
-
+    # 라벨 다시 한 번 보장
     display_cols = []
     for code, label in column_labels.items():
-        if code in response_maps and code in df_struct.columns:
-            df_struct[label] = df_struct[code].map(response_maps[code])
+        if code in df_struct.columns:
+            if code in response_maps:
+                df_struct[label] = df_struct[code].map(response_maps[code])
+            else:
+                df_struct[label] = df_struct[code]
             display_cols.append(label)
-        elif code in df_struct.columns:
-            df_struct[label] = df_struct[code]
-            display_cols.append(label)
 
-    def time_order_sort(times):
-        def time_to_minutes(s):
-            if isinstance(s, str) and ":" in s:
-                h, m = s.split(":")
-                return int(h) * 60 + int(m)
-            return float("inf")
-
-        valid_times = [t for t in times if t is not None and pd.notnull(t)]
-        return sorted(valid_times, key=time_to_minutes)
-
-    st.subheader("데이터 구조 보기 (필터 + 분포)")
-
+    # 나이 구간
     if "만 나이" in df_struct.columns:
-        age_min = int(np.nanmin(df_struct["만 나이"]))
-        age_max = int(np.nanmax(df_struct["만 나이"]))
-        bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
+        age_min_s = int(np.nanmin(df_struct["만 나이"]))
+        age_max_s = int(np.nanmax(df_struct["만 나이"]))
+        bin_edges_s = list(range(age_min_s // 10 * 10, age_max_s + 10, 10))
         df_struct["나이 구간(10살 단위)"] = pd.cut(
-            df_struct["만 나이"], bins=bin_edges, right=False
+            df_struct["만 나이"], bins=bin_edges_s, right=False
         )
         df_struct["나이 구간(10살 단위)_str"] = df_struct[
             "나이 구간(10살 단위)"
@@ -134,9 +208,7 @@ with tab_struct:
     for label in display_cols:
         if label not in df_struct.columns:
             continue
-
         options = [v for v in df_struct[label].dropna().unique()]
-
         if label in ["잠자는 시각", "기상 시각"]:
             sorted_options = time_order_sort(options)
             filters[label] = st.sidebar.multiselect(
@@ -193,7 +265,6 @@ with tab_struct:
     for label in display_cols:
         if label not in filtered_struct.columns:
             continue
-
         if label == "가구소득":
             soc_col = filtered_struct[label]
             outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
@@ -238,78 +309,9 @@ with tab_struct:
         "개별 만 나이(1살 단위)는 필터와 그래프에서 모두 제거했습니다."
     )
 
-# =====================================================
-# 아래부터는 앞에서 만든 1D / 2D / 원자료 탭 (df 사용, 전역 필터 없음)
-# =====================================================
-
-# 만 나이/나이 구간/라벨·이진 변수 생성은 한 번만 (탭 밖에서)
-character_cols = {
-    "age": "만 나이",
-    "sex": "성별",
-    "CTPRVN_CODE": "시도명",
-    "mbhld_co": "가구원수 전체",
-    "reside_adult_co": "가구원수 만 19세 이상",
-    "fma_19z3": "세대 유형",
-    "fma_04z1": "기초생활수급자 여부",
-    "fma_13z1": "가구소득",
-    "nue_01z1": "가구유형",
-    "mtc_17z1": "하루 평균 수면시간(주중)",
-    "mtc_18z1": "하루 평균 수면시간(주말)",
-    "mtc_06z1": "수면 소요시간(분)",
-    "잠자는 시각": "잠자는 시각",
-    "기상 시각": "기상 시각",
-}
-depression_cols = {
-    "mta_01z1": "주관적 스트레스 수준",
-    "mta_02z1": "스트레스로 인한 정신상담 여부",
-    "mtb_01z1": "우울감 경험 여부",
-    "mtb_02z1": "우울감으로 인한 정신상담 여부",
-    "mtd_01z1": "자살생각 경험 여부",
-    "mtd_02z1": "자살생각으로 인한 정신상담 여부",
-}
-
-# 라벨 컬럼이 없으면 추가 (구조 탭에서 이미 만들었어도 중복 생성해도 무방)
-for code, label in {**character_cols, **depression_cols}.items():
-    if label in df.columns:
-        continue
-    if code in df.columns:
-        if code in response_maps:
-            df[label] = df[code].map(response_maps[code])
-        else:
-            df[label] = df[code]
-
-if "age" in df.columns and "만 나이" not in df.columns:
-    df["만 나이"] = df["age"]
-    age_min = int(np.nanmin(df["만 나이"]))
-    age_max = int(np.nanmax(df["만 나이"]))
-    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
-    df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
-    df["나이 구간(10살 단위)_str"] = df["나이 구간(10살 단위)"].astype(str)
-
-if "우울_binary" not in df.columns and "mtb_01z1" in df.columns:
-    df["우울_binary"] = yes_no_to_binary_raw(df["mtb_01z1"])
-if "자살생각_binary" not in df.columns and "mtd_01z1" in df.columns:
-    df["자살생각_binary"] = yes_no_to_binary_raw(df["mtd_01z1"])
-
-char_labels = [label for code, label in character_cols.items() if label in df.columns]
-
-def group_rate(df_in, group_col, target_col):
-    temp = df_in[[group_col, target_col]].copy().dropna()
-    if temp.empty:
-        return pd.DataFrame(columns=[group_col, "표본수", "값"])
-    grp = (
-        temp.groupby(group_col)[target_col]
-        .agg(["count", "mean"])
-        .reset_index()
-        .rename(columns={"count": "표본수", "mean": "값"})
-    )
-    if set(np.unique(temp[target_col])) <= {0, 1}:
-        grp["값"] = grp["값"] * 100
-    return grp
-
-# --------------------
+# -----------------------------------------------------
 # 탭1: 1차원 비교
-# --------------------
+# -----------------------------------------------------
 with tab1:
     st.subheader("1차원 비교 (축 1개)")
     if len(df) == 0:
@@ -360,9 +362,9 @@ with tab1:
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(grp)
 
-# --------------------
+# -----------------------------------------------------
 # 탭2: 2차원 비교
-# --------------------
+# -----------------------------------------------------
 with tab2:
     st.subheader("2차원 비교 (축 2개)")
     if len(df) == 0:
@@ -429,9 +431,9 @@ with tab2:
                     )
                     st.plotly_chart(fig, use_container_width=True)
 
-# --------------------
+# -----------------------------------------------------
 # 탭3: 원자료
-# --------------------
+# -----------------------------------------------------
 with tab_raw:
     st.subheader("전체 원자료 미리보기 (라벨 컬럼 포함)")
     st.dataframe(df.head(50))
