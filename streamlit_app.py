@@ -23,12 +23,6 @@ column_labels = {
     "nue_01z1": "가구유형",
     "mtc_17z1": "하루 평균 수면시간(주중)",
     "mtc_18z1": "하루 평균 수면시간(주말)",
-    "mta_01z1": "주관적 스트레스 수준",
-    "mta_02z1": "스트레스로 인한 정신상담 여부",
-    "mtb_01z1": "우울감 경험 여부",
-    "mtb_02z1": "우울감으로 인한 정신상담 여부",
-    "mtd_01z1": "자살생각 경험 여부",
-    "mtd_02z1": "자살생각으로 인한 정신상담 여부",
     "mtc_06z1": "수면 소요시간(분)",
     "잠자는 시각": "잠자는 시각",
     "기상 시각": "기상 시각",
@@ -54,34 +48,33 @@ response_maps = {
         2: "지금은 아니지만, 과거에 수급자였던 적이 있다",
         3: "아니다", 7: "응답거부", 9: "모름",
     },
-    "mta_01z1": {
-        1: "대단히 많이 느낀다",
-        2: "많이 느끼는 편이다",
-        3: "조금 느끼는 편이다",
-        4: "거의 느끼지 않는다",
-    },
-    "mta_02z1": {1: "예", 2: "아니오"},
-    "mtb_01z1": {1: "예", 2: "아니오"},
-    "mtb_02z1": {1: "예", 2: "아니오"},
-    "mtd_01z1": {1: "예", 2: "아니오"},
-    "mtd_02z1": {1: "예", 2: "아니오"},
 }
 
-# --------------------
 # 라벨 컬럼 생성
-# --------------------
-display_cols = []
 for code, label in column_labels.items():
-    if code in response_maps and code in df.columns:
-        df[label] = df[code].map(response_maps[code])
-        display_cols.append(label)
-    elif code in df.columns:
-        df[label] = df[code]
-        display_cols.append(label)
+    if code in df.columns:
+        if code in response_maps:
+            df[label] = df[code].map(response_maps[code])
+        else:
+            df[label] = df[code]
 
-# --------------------
+# 만 나이 10살 구간
+if "age" in df.columns:
+    if "만 나이" not in df.columns:
+        df["만 나이"] = df["age"]
+    age_min = int(np.nanmin(df["만 나이"]))
+    age_max = int(np.nanmax(df["만 나이"]))
+    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
+    df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
+    df["나이 구간(10살 단위)_str"] = df["나이 구간(10살 단위)"].astype(str)
+    age_bins_str = [
+        str(interval)
+        for interval in sorted(df["나이 구간(10살 단위)"].dropna().unique())
+    ]
+else:
+    age_bins_str = []
+
 # 시간값 정렬 함수
-# --------------------
 def time_order_sort(times):
     def time_to_minutes(s):
         if isinstance(s, str) and ":" in s:
@@ -96,80 +89,126 @@ def time_order_sort(times):
 # 페이지 설정
 # --------------------
 st.set_page_config(
-    page_title="KCHS 분석 대시보드(전체 분포)",
+    page_title="KCHS 캐릭터 변수 분포",
     layout="wide",
 )
-st.title("KCHS | 전체 분포 확인 대시보드")
+st.title("KCHS | 캐릭터 변수 전체 분포 대시보드")
 
-# --------------------
-# 나이 10살 단위 구간 생성
-# --------------------
-if "만 나이" in df.columns:
-    age_min = int(np.nanmin(df["만 나이"]))
-    age_max = int(np.nanmax(df["만 나이"]))
-    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
-    df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
-    df["나이 구간(10살 단위)_str"] = df["나이 구간(10살 단위)"].astype(str)
-    age_bins_str = [
-        str(interval)
-        for interval in sorted(df["나이 구간(10살 단위)"].dropna().unique())
-    ]
-else:
-    age_bins_str = []
+st.markdown(
+    "- 이 페이지는 사람의 캐릭터(인구학·수면·소득 등)를 표현하는 변수들의 전체 분포를 한 번에 보여줍니다.\n"
+    "- 필터 없이 전체 데이터 기준 분포입니다."
+)
 
 # --------------------
 # 데이터 미리보기
 # --------------------
 st.subheader("데이터 미리보기")
-st.dataframe(df.head(30))
+preview_cols = [label for label in column_labels.values() if label in df.columns]
+st.dataframe(df[preview_cols].head(30))
 
 # --------------------
-# 10살 단위 나이 분포
+# 1. 나이 관련 그래프
 # --------------------
+if "만 나이" in df.columns:
+    st.subheader("만 나이 분포 (1살 단위)")
+    fig_age_raw = px.histogram(
+        df,
+        x="만 나이",
+        nbins=50,
+    )
+    st.plotly_chart(fig_age_raw, use_container_width=True)
+
 if "나이 구간(10살 단위)_str" in df.columns:
-    st.subheader("10살 단위 나이별 분포")
-    fig_age = px.histogram(
+    st.subheader("나이 구간(10살 단위) 분포")
+    fig_age_bin = px.histogram(
         df,
         x="나이 구간(10살 단위)_str",
         category_orders={"나이 구간(10살 단위)_str": age_bins_str},
     )
-    st.plotly_chart(fig_age, use_container_width=True)
+    st.plotly_chart(fig_age_bin, use_container_width=True)
 
 # --------------------
-# 가구소득 분포 (이상치 제거)
+# 2. 범주형 캐릭터 변수 (성별, 시도, 세대 유형, 기초생활수급, 가구유형)
+# --------------------
+cat_vars = [
+    "성별",
+    "시도명",
+    "세대 유형",
+    "기초생활수급자 여부",
+    "가구유형",
+]
+
+for label in cat_vars:
+    if label in df.columns:
+        st.subheader(f"{label} 분포")
+        fig_cat = px.histogram(
+            df,
+            x=label,
+        )
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+# --------------------
+# 3. 가구원수 관련 (전체 / 19세 이상)
+# --------------------
+for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
+    if label in df.columns:
+        st.subheader(f"{label} 분포")
+        col_val = pd.to_numeric(df[label], errors="coerce").dropna()
+        if len(col_val) > 0:
+            fig_num = px.histogram(
+                col_val,
+                x=col_val,
+                nbins=10,
+            )
+            st.plotly_chart(fig_num, use_container_width=True)
+
+# --------------------
+# 4. 가구소득 (이상치 제거)
 # --------------------
 if "가구소득" in df.columns:
     st.subheader("가구소득(0~20000만원, 이상치 제거) 분포")
-    soc_col = df["가구소득"]
-    outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
-    minval, maxval = 0, 20000
+    soc_col = pd.to_numeric(df["가구소득"], errors="coerce")
+    outlier_vals = [90000, 99999, 77777, 88888, 9999]
     soc_clean = soc_col[~soc_col.isin(outlier_vals)]
-    soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
+    soc_clean = soc_clean[(soc_clean >= 0) & (soc_clean <= 20000)]
     if len(soc_clean) > 0:
         fig_soc = px.histogram(
             soc_clean,
             x=soc_clean,
             nbins=40,
         )
-        fig_soc.update_xaxes(range=[minval, maxval])
+        fig_soc.update_xaxes(range=[0, 20000])
         st.plotly_chart(fig_soc, use_container_width=True)
 
 # --------------------
-# 수면 소요시간(분): 이상치 제거 + 15분 단위 구간 (0~360분)
+# 5. 하루 평균 수면시간 (주중 / 주말)
+# --------------------
+for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
+    if label in df.columns:
+        st.subheader(f"{label} 분포")
+        col_val = pd.to_numeric(df[label], errors="coerce").dropna()
+        if len(col_val) > 0:
+            fig_sleep = px.histogram(
+                col_val,
+                x=col_val,
+                nbins=30,
+            )
+            st.plotly_chart(fig_sleep, use_container_width=True)
+
+# --------------------
+# 6. 수면 소요시간(분): 이상치 제거 + 15분 단위 구간 (0~360분)
 # --------------------
 if "수면 소요시간(분)" in df.columns:
     st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위, 이상치 제거)")
 
-    sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce")
-    sleep_dur = sleep_dur.dropna()
+    sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce").dropna()
 
     if len(sleep_dur) > 0:
-        # 이상치 제거: 0분 이하, 360분(6시간) 초과 값 제거
+        # 이상치: 0분 이하, 360분(6시간) 초과 제거
         sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
 
         if len(sleep_dur_clean) > 0:
-            # 15분 단위 구간: 0,15,...,360
-            bins = list(range(0, 361, 15))
+            bins = list(range(0, 361, 15))  # 0,15,...,360
             labels = [f"{b}-{b+15}" for b in bins[:-1]]
 
             sleep_bins = pd.cut(
@@ -190,22 +229,7 @@ if "수면 소요시간(분)" in df.columns:
             st.write("0~360분 구간 내 수면 소요시간 데이터가 거의 없습니다.")
 
 # --------------------
-# 하루 평균 수면시간(주중/주말) 기본 분포
-# --------------------
-for col in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
-    if col in df.columns:
-        st.subheader(f"{col} 분포")
-        col_val = pd.to_numeric(df[col], errors="coerce").dropna()
-        if len(col_val) > 0:
-            fig_col = px.histogram(
-                col_val,
-                x=col_val,
-                nbins=40,
-            )
-            st.plotly_chart(fig_col, use_container_width=True)
-
-# --------------------
-# 시간 변수(잠자는 시각, 기상 시각) 분포
+# 7. 시간 변수: 잠자는 시각 / 기상 시각
 # --------------------
 for label in ["잠자는 시각", "기상 시각"]:
     if label in df.columns:
@@ -220,6 +244,6 @@ for label in ["잠자는 시각", "기상 시각"]:
             st.plotly_chart(fig_t, use_container_width=True)
 
 st.info(
-    "이 페이지는 사이드바 필터 없이, 전체 데이터의 분포를 한눈에 보기 위한 구조 파악용 페이지입니다. "
-    "수면 소요시간(분)은 0~360분(6시간)만 남기고 15분 단위로 구간화하여 표시했습니다."
+    "위 그래프들은 모두 필터 없이 전체 데이터 기준 분포입니다. "
+    "각 캐릭터 변수의 분포를 한눈에 보고, 이후 우울 지표와의 관계 분석에 활용할 수 있습니다."
 )
