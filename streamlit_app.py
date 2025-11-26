@@ -79,7 +79,7 @@ for code, label in column_labels.items():
         else:
             df[label] = df[code]
 
-# 만 나이 10살 구간 (표시는 '나이 구간(10살 단위)')
+# 만 나이 10살 구간
 if "age" in df.columns:
     if "만 나이" not in df.columns:
         df["만 나이"] = df["age"]
@@ -103,7 +103,7 @@ if "age" in df.columns:
 else:
     age_bins_str = []
 
-# 시간값 정렬 함수
+# 시간값 정렬
 def time_order_sort(times):
     def time_to_minutes(s):
         if isinstance(s, str) and ":" in s:
@@ -113,7 +113,7 @@ def time_order_sort(times):
     valid_times = [t for t in times if t is not None and pd.notnull(t)]
     return sorted(valid_times, key=time_to_minutes)
 
-# 그룹별 비율/평균 계산 함수
+# 그룹별 비율/평균
 def group_rate(df_in, group_col, target_col):
     temp = df_in[[group_col, target_col]].copy().dropna()
     if temp.empty:
@@ -133,14 +133,14 @@ def group_rate(df_in, group_col, target_col):
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
 tab_dist, tab_1d, tab_2d, tab_help = st.tabs(
-    ["데이터 분포", "1차원 비교", "2차원 비교", "상담 이용률"]
+    ["데이터 분포", "요인별 1차원 비교", "요인별 2차원 비교", "상담 이용률 분석"]
 )
 
 # ====================================================
-# 탭1: 캐릭터·식생활 분포
+# 탭1: 데이터 분포
 # ====================================================
 with tab_dist:
-    st.title("KCHS | 인구·수면·정신건강 분포 대시보드")
+    st.title("KCHS | 인구·수면·정신건강 분포")
 
     st.subheader("데이터 미리보기")
     preview_cols = [label for label in column_labels.values() if label in df.columns]
@@ -189,7 +189,7 @@ with tab_dist:
         )
         st.plotly_chart(fig_food, use_container_width=True)
 
-    for label in ["가구원수 전체", "가구원수 중 만 19세 이상"]:
+    for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
         if label in df.columns:
             st.subheader(f"{label} 분포")
             col_val = pd.to_numeric(df[label], errors="coerce").dropna()
@@ -198,7 +198,7 @@ with tab_dist:
                 st.plotly_chart(fig_num, use_container_width=True)
 
     if "가구소득" in df.columns:
-        st.subheader("가구소득 분포")
+        st.subheader("가구소득 분포 (0~20000만원)")
         soc_col = pd.to_numeric(df["가구소득"], errors="coerce")
         outlier_vals = [90000, 99999, 77777, 88888, 9999]
         soc_clean = soc_col[~soc_col.isin(outlier_vals)]
@@ -228,11 +228,11 @@ with tab_dist:
                     sleep_dur_clean, bins=bins, labels=labels, right=False
                 )
                 sleep_df = pd.DataFrame(
-                    {"수면 소요시간(15분 구간)": sleep_bins}
+                    {"수면 소요시간 구간": sleep_bins}
                 ).dropna()
                 fig_sd = px.histogram(
                     sleep_df,
-                    x="수면 소요시간(15분 구간)",
+                    x="수면 소요시간 구간",
                     title="수면 소요시간(분) 분포 (0~360분, 15분 단위 구간)",
                 )
                 st.plotly_chart(fig_sd, use_container_width=True)
@@ -250,10 +250,10 @@ with tab_dist:
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
-# 탭2: 1차원 비교
+# 탭2: 요인별 1차원 비교
 # ====================================================
 with tab_1d:
-    st.title("KCHS | 요인별 정신건강 격차 분석")
+    st.title("KCHS | 단일 요인별 정신건강 격차")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -284,7 +284,7 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        x_label = st.selectbox("비교할 축(개인, 가구, 경제, 수면 변수)", axis_candidates)
+        x_label = st.selectbox("비교할 요인 선택", axis_candidates)
 
         dep_candidates = []
         for label in [
@@ -298,13 +298,13 @@ with tab_1d:
             if label in df.columns:
                 dep_candidates.append(label)
 
-        target_label = st.selectbox("우울·스트레스 관련 지표 선택", dep_candidates)
+        target_label = st.selectbox("정신건강 관련 지표 선택", dep_candidates)
 
         st.markdown("##### 결과")
 
         df_tmp = df[[x_label, target_label]].copy().dropna()
         if df_tmp.empty:
-            st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+            st.warning("선택한 요인과 정신건강 지표 조합에 데이터가 없습니다.")
         else:
             if x_label in ["잠자는 시각", "기상 시각"]:
                 group_col = x_label
@@ -312,19 +312,17 @@ with tab_1d:
             elif x_label == "수면 소요시간(분)":
                 df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                 df_tmp = df_tmp.dropna(subset=[x_label, target_label])
-                sleep_clean = df_tmp[x_label]
-                sleep_clean = sleep_clean[(sleep_clean > 0) & (sleep_clean <= 360)]
-                df_tmp = df_tmp.loc[sleep_clean.index]
+                s = df_tmp[x_label]
+                s = s[(s > 0) & (s <= 360)]
+                df_tmp = df_tmp.loc[s.index]
                 if df_tmp.empty:
                     st.warning("0~360분 구간 내 수면 소요시간 데이터가 없습니다.")
                     st.stop()
                 bins = list(range(0, 361, 15))
                 labels = [f"{b}-{b+15}" for b in bins[:-1]]
-                df_tmp["축구간"] = pd.cut(
-                    df_tmp[x_label], bins=bins, labels=labels, right=False
-                )
-                df_tmp = df_tmp.dropna(subset=["축구간"])
-                group_col = "축구간"
+                df_tmp["요인구간"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                df_tmp = df_tmp.dropna(subset=["요인구간"])
+                group_col = "요인구간"
 
             elif x_label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
                 group_col = x_label
@@ -332,39 +330,37 @@ with tab_1d:
             elif x_label == "가구소득":
                 df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                 df_tmp = df_tmp.dropna(subset=[x_label, target_label])
-                inc_clean = df_tmp[x_label]
+                s = df_tmp[x_label]
                 out_vals = [90000, 99999, 77777, 88888, 9999]
-                inc_clean = inc_clean[~inc_clean.isin(out_vals)]
-                inc_clean = inc_clean[(inc_clean >= 0) & (inc_clean <= 20000)]
-                df_tmp = df_tmp.loc[inc_clean.index]
+                s = s[~s.isin(out_vals)]
+                s = s[(s >= 0) & (s <= 20000)]
+                df_tmp = df_tmp.loc[s.index]
                 if df_tmp.empty:
                     st.warning("0~20000만원 구간 내 가구소득 데이터가 없습니다.")
                     st.stop()
                 bins = list(range(0, 20001, 2000))
                 labels = [f"{b}-{b+2000}" for b in bins[:-1]]
-                df_tmp["축구간"] = pd.cut(
-                    df_tmp[x_label], bins=bins, labels=labels, right=False
-                )
-                df_tmp = df_tmp.dropna(subset=["축구간"])
-                group_col = "축구간"
+                df_tmp["요인구간"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                df_tmp = df_tmp.dropna(subset=["요인구간"])
+                group_col = "요인구간"
 
             else:
                 x_col = df[x_label]
                 if pd.api.types.is_numeric_dtype(x_col):
-                    bins = st.slider("축 구간 수", 4, 20, 8)
+                    bins = st.slider("요인 구간 수", 4, 20, 8)
                     df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                     df_tmp = df_tmp.dropna(subset=[x_label, target_label])
-                    df_tmp["축구간"] = pd.cut(
+                    df_tmp["요인구간"] = pd.cut(
                         df_tmp[x_label],
                         bins=bins,
                         include_lowest=True,
                     )
-                    group_col = "축구간"
+                    group_col = "요인구간"
                 else:
                     group_col = x_label
 
             if df_tmp.empty:
-                st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+                st.warning("선택한 요인과 정신건강 지표 조합에 데이터가 없습니다.")
             else:
                 s = df_tmp[target_label].astype(str)
                 unique_vals = set(s.unique())
@@ -401,10 +397,10 @@ with tab_1d:
                         st.dataframe(res)
 
 # ====================================================
-# 탭3: 2차원 비교 (축 2개 vs 우울·스트레스 지표)
+# 탭3: 요인별 2차원 비교
 # ====================================================
 with tab_2d:
-    st.title("KCHS | 교차요인별 정신건강 히트맵")
+    st.title("KCHS | 복수 요인 교차에 따른 정신건강")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -436,16 +432,16 @@ with tab_2d:
                 axis_candidates.append(label)
 
         if len(axis_candidates) < 2:
-            st.warning("2차원 비교에 사용할 축이 2개 이상 필요합니다.")
+            st.warning("2차원 비교에 사용할 요인이 2개 이상 필요합니다.")
         else:
             col_a, col_b = st.columns(2)
             with col_a:
-                axis1 = st.selectbox("축 1 (행, Row)", axis_candidates, index=0, key="axis1_2d")
+                axis1 = st.selectbox("요인 1 (행, Row)", axis_candidates, index=0, key="axis1_2d")
             with col_b:
-                axis2 = st.selectbox("축 2 (열, Column)", axis_candidates, index=1, key="axis2_2d")
+                axis2 = st.selectbox("요인 2 (열, Column)", axis_candidates, index=1, key="axis2_2d")
 
             if axis1 == axis2:
-                st.warning("축 1과 축 2는 서로 다른 변수를 선택해야 합니다.")
+                st.warning("요인 1과 요인 2는 서로 다른 변수를 선택해야 합니다.")
             else:
                 dep_candidates = []
                 for label in [
@@ -459,11 +455,11 @@ with tab_2d:
                     if label in df.columns:
                         dep_candidates.append(label)
 
-                target_label = st.selectbox("우울·스트레스 관련 지표 선택 (2D)", dep_candidates)
+                target_label = st.selectbox("정신건강 관련 지표 선택 (2D)", dep_candidates)
 
                 df_tmp = df[[axis1, axis2, target_label]].copy().dropna()
                 if df_tmp.empty:
-                    st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+                    st.warning("선택한 요인 1·2와 정신건강 지표 조합에 데이터가 없습니다.")
                 else:
                     def make_binned_col(df_in, col):
                         series = df_in[col]
@@ -476,10 +472,8 @@ with tab_2d:
                             df_sub = df_in.loc[s.index].copy()
                             bins = list(range(0, 361, 30))
                             labels = [f"{b}-{b+30}" for b in bins[:-1]]
-                            df_sub[col + "_bin"] = pd.cut(
-                                s, bins=bins, labels=labels, right=False
-                            )
-                            return col + "_bin", df_sub[col + "_bin"]
+                            df_sub["요인"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                            return "요인", df_sub["요인"]
 
                         if col in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
                             return col, series
@@ -492,32 +486,29 @@ with tab_2d:
                             df_sub = df_in.loc[s.index].copy()
                             bins = list(range(0, 20001, 2000))
                             labels = [f"{b}-{b+2000}" for b in bins[:-1]]
-                            df_sub[col + "_bin"] = pd.cut(
-                                s, bins=bins, labels=labels, right=False
-                            )
-                            return col + "_bin", df_sub[col + "_bin"]
+                            df_sub["요인"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                            return "요인", df_sub["요인"]
 
                         if pd.api.types.is_numeric_dtype(series):
                             s = pd.to_numeric(series, errors="coerce")
                             df_sub = df_in.copy()
-                            df_sub[col + "_bin"] = pd.cut(
-                                s, bins=6, include_lowest=True
-                            )
-                            df_sub[col + "_bin"] = df_sub[col + "_bin"].astype(str)
-                            return col + "_bin", df_sub[col + "_bin"]
+                            df_sub["요인"] = pd.cut(s, bins=6, include_lowest=True).astype(str)
+                            return "요인", df_sub["요인"]
 
                         return col, series
 
+                    # 요인 1
                     new_col1, new_series1 = make_binned_col(df_tmp, axis1)
                     df_tmp = df_tmp.loc[new_series1.dropna().index]
                     df_tmp[new_col1] = new_series1.dropna()
 
+                    # 요인 2
                     new_col2, new_series2 = make_binned_col(df_tmp, axis2)
                     df_tmp = df_tmp.loc[new_series2.dropna().index]
                     df_tmp[new_col2] = new_series2.dropna()
 
                     if df_tmp.empty:
-                        st.warning("축 1·축 2를 구간화한 뒤 남은 데이터가 없습니다.")
+                        st.warning("요인 1·2를 구간화한 뒤 남은 데이터가 없습니다.")
                     else:
                         s = df_tmp[target_label].astype(str)
                         unique_vals = set(s.unique())
@@ -535,7 +526,7 @@ with tab_2d:
 
                         tmp = df_tmp[[new_col1, new_col2, value_col]].dropna()
                         if tmp.empty:
-                            st.warning("선택한 변수 조합에 데이터가 없습니다.")
+                            st.warning("선택한 요인 조합에 대해 계산 가능한 데이터가 없습니다.")
                         else:
                             pivot = (
                                 tmp.groupby([new_col1, new_col2])[value_col]
@@ -550,7 +541,7 @@ with tab_2d:
                                 z_label = "평균 코드값"
 
                             heat = pivot.pivot(index=new_col1, columns=new_col2, values="값")
-                            st.markdown("#### 교차표 (행: 축 1, 열: 축 2)")
+                            st.markdown("#### 교차표 (행: 요인 1, 열: 요인 2)")
                             st.dataframe(heat)
 
                             fig = px.imshow(
@@ -567,13 +558,13 @@ with tab_2d:
 # 탭4: 상담 이용률 (우울/자살/스트레스 기준)
 # ====================================================
 with tab_help:
-    st.title("KCHS | 정신건강 서비스 접근성 및 자가진단 분석")
+    st.title("KCHS | 정신건강 서비스 접근성과 자가진단")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
         mode = st.radio(
-            "기준 선택",
+            "기준 집단 선택",
             ["우울감 경험자 기준", "자살생각 경험자 기준", "스트레스 고수준 기준"],
             horizontal=True,
         )
@@ -594,7 +585,6 @@ with tab_help:
             if mode in ["우울감 경험자 기준", "자살생각 경험자 기준"]:
                 base_df = df[df[base_col] == "예"].copy()
             else:
-                # 스트레스 고수준: '대단히 많이 느낀다', '많이 느끼는 편이다'
                 high_stress_vals = ["대단히 많이 느낀다", "많이 느끼는 편이다"]
                 base_df = df[df[base_col].isin(high_stress_vals)].copy()
 
@@ -630,12 +620,12 @@ with tab_help:
                         axis_candidates.append(label)
 
                 axis = st.selectbox(
-                    "상담 이용률을 보고 싶은 축 선택", axis_candidates
+                    "상담 이용률을 비교할 요인 선택", axis_candidates
                 )
 
                 tmp = base_df[[axis, help_col]].copy().dropna()
                 if tmp.empty:
-                    st.warning("선택한 축과 상담 변수 조합에 데이터가 없습니다.")
+                    st.warning("선택한 요인과 상담 변수 조합에 데이터가 없습니다.")
                 else:
                     if axis in ["잠자는 시각", "기상 시각"]:
                         group_col = axis
@@ -648,11 +638,9 @@ with tab_help:
                         tmp = tmp.loc[s.index]
                         bins = list(range(0, 361, 30))
                         labels = [f"{b}-{b+30}" for b in bins[:-1]]
-                        tmp["축구간"] = pd.cut(
-                            s, bins=bins, labels=labels, right=False
-                        )
-                        tmp = tmp.dropna(subset=["축구간"])
-                        group_col = "축구간"
+                        tmp["요인구간"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                        tmp = tmp.dropna(subset=["요인구간"])
+                        group_col = "요인구간"
 
                     elif axis in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
                         group_col = axis
@@ -667,22 +655,19 @@ with tab_help:
                         tmp = tmp.loc[s.index]
                         bins = list(range(0, 20001, 2000))
                         labels = [f"{b}-{b+2000}" for b in bins[:-1]]
-                        tmp["축구간"] = pd.cut(
-                            s, bins=bins, labels=labels, right=False
-                        )
-                        tmp = tmp.dropna(subset=["축구간"])
-                        group_col = "축구간"
+                        tmp["요인구간"] = pd.cut(s, bins=bins, labels=labels, right=False)
+                        tmp = tmp.dropna(subset=["요인구간"])
+                        group_col = "요인구간"
 
                     else:
                         x_col = base_df[axis]
                         if pd.api.types.is_numeric_dtype(x_col):
                             tmp[axis] = pd.to_numeric(tmp[axis], errors="coerce")
                             tmp = tmp.dropna(subset=[axis, help_col])
-                            tmp["축구간"] = pd.cut(
+                            tmp["요인구간"] = pd.cut(
                                 tmp[axis], bins=6, include_lowest=True
-                            )
-                            tmp["축구간"] = tmp["축구간"].astype(str)
-                            group_col = "축구간"
+                            ).astype(str)
+                            group_col = "요인구간"
                         else:
                             group_col = axis
 
