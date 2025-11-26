@@ -81,7 +81,7 @@ for code, label in column_labels.items():
         else:
             df[label] = df[code]
 
-# 만 나이 10살 구간
+# 만 나이 10살 구간 (표시는 '나이 구간(10살 단위)'로, _str 제거)
 if "age" in df.columns:
     if "만 나이" not in df.columns:
         df["만 나이"] = df["age"]
@@ -89,11 +89,19 @@ if "age" in df.columns:
     age_max = int(np.nanmax(df["만 나이"]))
     bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
     df["나이 구간(10살 단위)"] = pd.cut(df["만 나이"], bins=bin_edges, right=False)
-    df["나이 구간(10살 단위)_str"] = df["나이 구간(10살 단위)"].astype(str)
-    age_bins_str = [
-        str(interval)
-        for interval in sorted(df["나이 구간(10살 단위)"].dropna().unique())
-    ]
+    # 사람이 보기 좋은 문자열로 변환 (예: [10,20) -> "10-20")
+    def interval_to_str(interval):
+        if pd.isna(interval):
+            return np.nan
+        left = int(interval.left)
+        right = int(interval.right)
+        return f"{left}-{right}"
+    df["나이 구간(10살 단위)"] = df["나이 구간(10살 단위)"].apply(interval_to_str)
+    # 정렬용 리스트 (수치 기준으로 정렬)
+    age_bins_str = sorted(
+        [v for v in df["나이 구간(10살 단위)"].dropna().unique()],
+        key=lambda s: int(s.split("-")[0])
+    )
 else:
     age_bins_str = []
 
@@ -107,17 +115,7 @@ def time_order_sort(times):
     valid_times = [t for t in times if t is not None and pd.notnull(t)]
     return sorted(valid_times, key=time_to_minutes)
 
-# 우울/자살 이진 변수 (예=1, 아니오=0)
-def yes_no_to_binary(series):
-    s = pd.to_numeric(series, errors="coerce")
-    return np.where(s == 1, 1, np.where(s == 2, 0, np.nan))
-
-if "mtb_01z1" in df.columns:
-    df["우울_binary"] = yes_no_to_binary(df["mtb_01z1"])
-if "mtd_01z1" in df.columns:
-    df["자살생각_binary"] = yes_no_to_binary(df["mtd_01z1"])
-
-# 그룹별 비율 계산 함수
+# 그룹별 비율/평균 계산 함수
 def group_rate(df_in, group_col, target_col):
     temp = df_in[[group_col, target_col]].copy().dropna()
     if temp.empty:
@@ -128,7 +126,7 @@ def group_rate(df_in, group_col, target_col):
         .reset_index()
         .rename(columns={"count": "표본수", "mean": "값"})
     )
-    # 이진이면 퍼센트로 변환
+    # 이진(0/1)이면 퍼센트로
     if set(np.unique(temp[target_col])) <= {0, 1}:
         grp["값"] = grp["값"] * 100
     return grp
@@ -136,10 +134,11 @@ def group_rate(df_in, group_col, target_col):
 # ====================================================
 # 탭 구성
 # ====================================================
+st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
 tab_dist, tab_1d = st.tabs(["캐릭터·식생활 분포", "1차원 비교"])
 
 # ====================================================
-# 탭1: 캐릭터·식생활 분포 (이미 완성된 1페이지)
+# 탭1: 캐릭터·식생활 분포
 # ====================================================
 with tab_dist:
     st.title("KCHS | 캐릭터 및 식생활 형편 분포 대시보드")
@@ -154,12 +153,12 @@ with tab_dist:
     st.dataframe(df[preview_cols].head(30))
 
     # 나이 구간
-    if "나이 구간(10살 단위)_str" in df.columns:
+    if "나이 구간(10살 단위)" in df.columns:
         st.subheader("나이 구간(10살 단위) 분포")
         fig_age_bin = px.histogram(
             df,
-            x="나이 구간(10살 단위)_str",
-            category_orders={"나이 구간(10살 단위)_str": age_bins_str},
+            x="나이 구간(10살 단위)",
+            category_orders={"나이 구간(10살 단위)": age_bins_str},
         )
         st.plotly_chart(fig_age_bin, use_container_width=True)
 
@@ -269,16 +268,16 @@ with tab_dist:
 # 탭2: 1차원 비교
 # ====================================================
 with tab_1d:
-    st.title("KCHS | 1차원 비교 (축 1개 vs 우울 지표)")
+    st.title("KCHS | 1차원 비교 (축 1개 vs 우울·스트레스 지표)")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
-        # 1D 비교에서 사용할 캐릭터 축 후보
+        # 축 후보
         axis_candidates = []
 
-        if "나이 구간(10살 단위)_str" in df.columns:
-            axis_candidates.append("나이 구간(10살 단위)_str")
+        if "나이 구간(10살 단위)" in df.columns:
+            axis_candidates.append("나이 구간(10살 단위)")
 
         for label in [
             "성별",
@@ -286,12 +285,10 @@ with tab_1d:
             "세대 유형",
             "기초생활수급자 여부",
             "식생활 형편",
-            "가구유형",  # 만약 존재하면
         ]:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        # 수치형도 비교축으로 쓰고 싶으면 아래 추가
         for label in [
             "가구소득",
             "하루 평균 수면시간(주중)",
@@ -303,12 +300,8 @@ with tab_1d:
 
         x_label = st.selectbox("비교할 축(캐릭터/환경 변수)", axis_candidates)
 
-        # 우울 지표 후보: 이진 변수 + 예/아니오 문항
+        # 타깃 지표 후보 (한글 문항만)
         dep_candidates = []
-        if "우울_binary" in df.columns:
-            dep_candidates.append("우울_binary")
-        if "자살생각_binary" in df.columns:
-            dep_candidates.append("자살생각_binary")
         for label in [
             "우울감 경험 여부",
             "우울감으로 인한 정신상담 여부",
@@ -324,83 +317,59 @@ with tab_1d:
 
         st.markdown("##### 결과")
 
-        # 수치형 축이면 구간으로 나눔
+        # 축 처리 (수치형이면 구간화)
         x_col = df[x_label]
-        if pd.api.types.is_numeric_dtype(x_col):
-            bins = st.slider("축 구간 수", 4, 20, 8)
-            df_tmp = df[[x_label, target_label]].copy()
-            df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
-            df_tmp = df_tmp.dropna(subset=[x_label, target_label])
+        df_tmp = df[[x_label, target_label]].copy().dropna()
 
-            if df_tmp.empty:
-                st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
-            else:
+        if df_tmp.empty:
+            st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+        else:
+            if pd.api.types.is_numeric_dtype(x_col):
+                bins = st.slider("축 구간 수", 4, 20, 8)
+                df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
+                df_tmp = df_tmp.dropna(subset=[x_label, target_label])
                 df_tmp["축구간"] = pd.cut(
                     df_tmp[x_label],
                     bins=bins,
                     include_lowest=True,
                 )
                 group_col = "축구간"
-        else:
-            df_tmp = df[[x_label, target_label]].copy().dropna()
-            group_col = x_label
+            else:
+                group_col = x_label
 
-        if df_tmp.empty:
-            st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
-        else:
-            # 타깃 처리
-            if target_label in ["우울_binary", "자살생각_binary"]:
-                target_col = target_label
-                res = group_rate(df_tmp, group_col, target_col)
+            # 예/아니오 문항인지 확인
+            s = df_tmp[target_label].astype(str)
+            unique_vals = set(s.unique())
+
+            if unique_vals <= {"예", "아니오", "nan"}:
+                # '예' 비율
+                df_tmp["is_yes"] = (s == "예").astype(float)
+                res = group_rate(df_tmp, group_col, "is_yes")
                 if res.empty:
                     st.warning("그룹별 결과가 없습니다.")
                 else:
-                    y_title = (
-                        "우울감 경험률(%)"
-                        if target_label == "우울_binary"
-                        else "자살생각 경험률(%)"
-                    )
                     fig = px.bar(
                         res,
                         x=group_col,
                         y="값",
-                        title=f"{group_col}별 {y_title}",
+                        title=f"{group_col}별 {target_label} '예' 비율(%)",
                     )
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(res)
             else:
-                # 예/아니오 또는 다범주 문항
-                if target_label in df.columns:
-                    s = df_tmp[target_label].astype(str)
-                    # 예/아니오 문항이면 '예' 비율
-                    if set(s.unique()) <= {"예", "아니오", "nan"}:
-                        df_tmp["is_yes"] = (s == "예").astype(float)
-                        res = group_rate(df_tmp, group_col, "is_yes")
-                        if res.empty:
-                            st.warning("그룹별 결과가 없습니다.")
-                        else:
-                            fig = px.bar(
-                                res,
-                                x=group_col,
-                                y="값",
-                                title=f"{group_col}별 {target_label} '예' 비율(%)",
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            st.dataframe(res)
-                    else:
-                        # 스트레스 수준(1~4) 같은 경우: 평균 코드 값
-                        df_tmp[target_label] = pd.to_numeric(
-                            df_tmp[target_label], errors="coerce"
-                        )
-                        res = group_rate(df_tmp, group_col, target_label)
-                        if res.empty:
-                            st.warning("그룹별 결과가 없습니다.")
-                        else:
-                            fig = px.bar(
-                                res,
-                                x=group_col,
-                                y="값",
-                                title=f"{group_col}별 {target_label} 평균 코드값",
-                            )
-                            st.plotly_chart(fig, use_container_width=True)
-                            st.dataframe(res)
+                # 스트레스 수준 등: 평균 코드값
+                df_tmp[target_label] = pd.to_numeric(
+                    df_tmp[target_label], errors="coerce"
+                )
+                res = group_rate(df_tmp, group_col, target_label)
+                if res.empty:
+                    st.warning("그룹별 결과가 없습니다.")
+                else:
+                    fig = px.bar(
+                        res,
+                        x=group_col,
+                        y="값",
+                        title=f"{group_col}별 {target_label} 평균 코드값",
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.dataframe(res)
