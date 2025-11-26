@@ -103,3 +103,18 @@ for label in display_cols:
 st.info(
     "잠자는 시각·기상 시각은 30분 단위(HH:00, HH:30, HH+1:00)로 시간순으로 자동 정렬된 필터/분포/표가 제공됩니다."
 )
+
+import numpy as np
+import plotly.express as px
+
+# 가구소득 이상치/극단값 제거 후, 선택구간만 시각화 (전체 코드의 가장 마지막 아래에 추가)
+SOC_OUTLIERS = [90000, 99999, 77777, 88888, 9999, None, np.nan]
+if '가구소득' in filtered.columns:
+    soc = filtered['가구소득'].apply(lambda x: np.nan if x in SOC_OUTLIERS else x)
+    minval, maxval = 0, 20000  # 분석구간 조정 가능(예: 0~20000만원)
+    st.subheader("가구소득(0~2억원 구간) 응답 분포(이상치 제거)")
+    # 슬라이더로 원하는 구간만 직관적으로 조절
+    soc_range = st.slider('가구소득 분석구간 (만원)', minval, maxval, (minval, maxval))
+    soc_sub = soc[(soc >= soc_range[0]) & (soc <= soc_range[1])]
+    fig_soc = px.histogram(soc_sub, x='가구소득', title='가구소득 응답 분포 (이상치 제거)', nbins=20)
+    st.plotly_chart(fig_soc)
