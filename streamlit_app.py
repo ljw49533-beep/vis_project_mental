@@ -4,12 +4,12 @@ import plotly.express as px
 import numpy as np
 
 # ====================================================
-# 공통: 데이터 불러오기
+# 0. 공통: 데이터 불러오기
 # ====================================================
 df = pd.read_csv("kchs_clean_ready.csv", encoding="utf-8")
 
 # ====================================================
-# 공통: 코드 → 라벨 매핑
+# 1. 코드 → 라벨 매핑
 # ====================================================
 column_labels = {
     "age": "만 나이",
@@ -26,7 +26,6 @@ column_labels = {
     "mtc_06z1": "수면 소요시간(분)",
     "잠자는 시각": "잠자는 시각",
     "기상 시각": "기상 시각",
-    # 우울 관련 변수 라벨 (1D 비교용)
     "mta_01z1": "주관적 스트레스 수준",
     "mta_02z1": "스트레스로 인한 정신상담 여부",
     "mtb_01z1": "우울감 경험 여부",
@@ -53,7 +52,6 @@ response_maps = {
         7: "응답거부",
         9: "모름",
     },
-    # nue_01z1: 식생활 형편 (1~4)
     "nue_01z1": {
         1: "우리 식구 모두가 원하는 만큼의 충분한 양과 다양한 종류의 음식을 먹을 수 있었다",
         2: "우리 식구 모두가 충분한 양의 음식을 먹을 수 있었으나 다양한 종류의 음식은 먹지 못했다",
@@ -126,28 +124,22 @@ def group_rate(df_in, group_col, target_col):
         .reset_index()
         .rename(columns={"count": "표본수", "mean": "값"})
     )
-    # 이진(0/1)이면 퍼센트로
     if set(np.unique(temp[target_col])) <= {0, 1}:
         grp["값"] = grp["값"] * 100
     return grp
 
 # ====================================================
-# 탭 구성
+# 2. 탭 구성
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
 tab_dist, tab_1d = st.tabs(["캐릭터·식생활 분포", "1차원 비교"])
 
 # ====================================================
-# 탭1: 캐릭터·식생활 분포 (이전 1페이지)
+# 탭1: 캐릭터·식생활 분포
 # ====================================================
 with tab_dist:
     st.title("KCHS | 캐릭터 및 식생활 형편 분포 대시보드")
-    st.markdown(
-        "- 인구학·소득·수면 변수와 함께, 식생활 형편(nue_01z1)을 라벨로 변환해 분포를 보여줍니다.\n"
-        "- 필터 없이 전체 데이터 기준입니다."
-    )
 
-    # 데이터 미리보기
     st.subheader("데이터 미리보기")
     preview_cols = [label for label in column_labels.values() if label in df.columns]
     st.dataframe(df[preview_cols].head(30))
@@ -265,7 +257,7 @@ with tab_dist:
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
-# 탭2: 1차원 비교 (시간 변수 포함)
+# 탭2: 1차원 비교 (시간·수면 변수 포함)
 # ====================================================
 with tab_1d:
     st.title("KCHS | 1차원 비교 (축 1개 vs 우울·스트레스 지표)")
@@ -273,7 +265,7 @@ with tab_1d:
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
-        # 축 후보 (시간·수면 변수 모두 포함)
+        # 축 후보 (시간·수면 변수 포함)
         axis_candidates = []
 
         if "나이 구간(10살 단위)" in df.columns:
@@ -291,7 +283,6 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        # 수면 관련 숫자형 축도 포함
         for label in [
             "하루 평균 수면시간(주중)",
             "하루 평균 수면시간(주말)",
@@ -324,9 +315,9 @@ with tab_1d:
         if df_tmp.empty:
             st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
         else:
-            # 축 그룹 정의
+            # 1) 축 그룹 정의
             if x_label in ["잠자는 시각", "기상 시각"]:
-                # 시간 문자열은 항상 범주형
+                # 시간 문자열은 그대로 범주형
                 group_col = x_label
 
             elif x_label in [
@@ -334,12 +325,15 @@ with tab_1d:
                 "하루 평균 수면시간(주말)",
                 "수면 소요시간(분)",
             ]:
-                # 수면 관련 숫자형은 0~360분, 15분 단위 구간으로 통일
+                # 수면 관련 숫자형은 0~360분, 15분 단위 구간
                 df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                 df_tmp = df_tmp.dropna(subset=[x_label, target_label])
                 sleep_clean = df_tmp[x_label]
                 sleep_clean = sleep_clean[(sleep_clean > 0) & (sleep_clean <= 360)]
                 df_tmp = df_tmp.loc[sleep_clean.index]
+                if df_tmp.empty:
+                    st.warning("0~360분 구간 내 데이터가 없습니다.")
+                    st.stop()
                 bins = list(range(0, 361, 15))
                 labels = [f"{b}-{b+15}" for b in bins[:-1]]
                 df_tmp["축구간"] = pd.cut(
@@ -349,7 +343,7 @@ with tab_1d:
                 group_col = "축구간"
 
             else:
-                # 일반 수치형: 슬라이더로 구간 수 지정
+                # 나이 구간/성별/시도/소득 등
                 x_col = df[x_label]
                 if pd.api.types.is_numeric_dtype(x_col):
                     bins = st.slider("축 구간 수", 4, 20, 8)
@@ -367,7 +361,7 @@ with tab_1d:
             if df_tmp.empty:
                 st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
             else:
-                # 예/아니오 문항인지 확인
+                # 2) 타깃 처리: 예/아니오 vs 다범주
                 s = df_tmp[target_label].astype(str)
                 unique_vals = set(s.unique())
 
