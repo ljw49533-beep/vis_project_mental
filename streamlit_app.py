@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import numpy as np
 
 df = pd.read_csv('kchs_clean_ready.csv', encoding='utf-8')
 
@@ -51,11 +52,10 @@ for code, label in column_labels.items():
         df[label] = df[code]
         display_cols.append(label)
 
-st.set_page_config(page_title="KCHS 수면·기상 30분단위 시간순 대시보드", layout="wide")
-st.title("KCHS 대시보드 | 수면·기상 시각 시간순 정렬 + 필터/분석")
+st.set_page_config(page_title="KCHS 분포/이상치제거/시간순 대시보드", layout="wide")
+st.title("KCHS | 모든 물리값 정렬·가구소득 분포 가시성 개선")
 
 def time_order_sort(times):
-    # HH:MM 형태 문자열을 분으로 변환해서 정렬
     def time_to_minutes(s):
         if isinstance(s, str) and ':' in s:
             h, m = s.split(":")
@@ -68,11 +68,9 @@ filters = {}
 for label in display_cols:
     if label not in df.columns: continue
     options = [v for v in df[label].dropna().unique()]
-    # 시간순 정렬 (잠자는, 기상 시각)
     if label in ['잠자는 시각', '기상 시각']:
         sorted_options = time_order_sort(options)
         filters[label] = st.sidebar.multiselect(label, sorted_options, default=sorted_options)
-    # 분 단위·수면시간 등은 슬라이더
     elif '분' in label and pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
         min_val, max_val = float(min(options)), float(max(options))
         filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
@@ -91,35 +89,27 @@ st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
 for label in display_cols:
-    # 수면 소요/평균 등은 히스토그램, 시각은 시간순 x축으로 정렬
-    if label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
-        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
-        st.plotly_chart(fig)
+    # 가구소득만 특별히 이상치 제거+구간제한(나머지는 기존 방식)
+    if label == '가구소득' and label in filtered.columns:
+        soc_col = filtered[label]
+        outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
+        minval, maxval = 0, 20000  # 분석구간(만원) 지정
+        soc_clean = soc_col[~soc_col.isin(outlier_vals)]
+        soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
+        st.subheader("가구소득(0~20000만원, 이상치제거) 분포")
+        fig_soc = px.histogram(soc_clean, x=soc_clean, title='가구소득 응답 분포(정상 구간, 이상치 제거)', nbins=40)
+        fig_soc.update_xaxes(range=[minval, maxval])
+        st.plotly_chart(fig_soc)
+    # 시각값(정렬된 x축, 히스토그램)
     elif label in ['잠자는 시각', '기상 시각'] and label in filtered.columns:
         times_sorted = time_order_sort(filtered[label].dropna().unique())
         fig = px.histogram(filtered, x=label, category_orders={label: times_sorted}, title=f"{label} (시간순 정렬)")
         st.plotly_chart(fig)
+    # 수치형 변수 분포(히스토그램)
+    elif label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
+        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
+        st.plotly_chart(fig)
 
 st.info(
-    "잠자는 시각·기상 시각은 30분 단위(HH:00, HH:30, HH+1:00)로 시간순으로 자동 정렬된 필터/분포/표가 제공됩니다."
+    "가구소득(0~2억원 내 정상구간)만 이상치(99999 등) 완전제거, 시각·물리값 시간/값 순서대로 모든 분석·분포가 향상!"
 )
-
-import numpy as np
-import plotly.express as px
-
-# 가구소득 분포 그래프 개선(이 부분만 붙이면 됨)
-if '가구소득' in filtered.columns:
-    soc_col = filtered['가구소득']
-    # 이상치 코드 + 실질적으로 분석할 최대/최소 값 기준
-    outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
-    minval, maxval = 0, 20000   # 원하는 분석구간
-    soc_clean = soc_col[~soc_col.isin(outlier_vals)]
-    soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
-
-    st.subheader("가구소득(0~20000만원 구간, 이상치 제거) 분포")
-    # 시각적으로 더 명확하게 보이게 bin개수 조정 및 x/y축 표시
-    fig_soc = px.histogram(soc_clean, x='가구소득', title='가구소득 응답 분포(정상 구간, 이상치 완전 제외)', nbins=40)
-    fig_soc.update_xaxes(range=[minval, maxval])
-    st.plotly_chart(fig_soc)
-
-    st.caption("외곽치(90000, 99999, 77777, 88888 등) 및 상식적 분석구간 이외 값 완전 제거, 실질 분포만 강조!")
