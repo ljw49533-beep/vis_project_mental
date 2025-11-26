@@ -265,7 +265,7 @@ with tab_1d:
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
     else:
-        # 축 후보 (시간·수면 변수 포함)
+        # 축 후보
         axis_candidates = []
 
         if "나이 구간(10살 단위)" in df.columns:
@@ -283,10 +283,11 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
+        # 수치형 축 후보
         for label in [
-            "하루 평균 수면시간(주중)",
-            "하루 평균 수면시간(주말)",
-            "수면 소요시간(분)",
+            "하루 평균 수면시간(주중)",   # 코드값 그대로 범주형 취급
+            "하루 평균 수면시간(주말)",   # 코드값 그대로 범주형 취급
+            "수면 소요시간(분)",        # 0~360, 15분 bin
             "가구소득",
         ]:
             if label in df.columns and label not in axis_candidates:
@@ -294,7 +295,7 @@ with tab_1d:
 
         x_label = st.selectbox("비교할 축(캐릭터/환경/시간·수면 변수)", axis_candidates)
 
-        # 타깃 지표 후보 (한글 문항만)
+        # 타깃 지표 후보
         dep_candidates = []
         for label in [
             "우울감 경험 여부",
@@ -320,19 +321,15 @@ with tab_1d:
                 # 시간 문자열은 그대로 범주형
                 group_col = x_label
 
-            elif x_label in [
-                "하루 평균 수면시간(주중)",
-                "하루 평균 수면시간(주말)",
-                "수면 소요시간(분)",
-            ]:
-                # 수면 관련 숫자형은 0~360분, 15분 단위 구간
+            elif x_label == "수면 소요시간(분)":
+                # 수면 소요시간만 0~360분, 15분 구간
                 df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                 df_tmp = df_tmp.dropna(subset=[x_label, target_label])
                 sleep_clean = df_tmp[x_label]
                 sleep_clean = sleep_clean[(sleep_clean > 0) & (sleep_clean <= 360)]
                 df_tmp = df_tmp.loc[sleep_clean.index]
                 if df_tmp.empty:
-                    st.warning("0~360분 구간 내 데이터가 없습니다.")
+                    st.warning("0~360분 구간 내 수면 소요시간 데이터가 없습니다.")
                     st.stop()
                 bins = list(range(0, 361, 15))
                 labels = [f"{b}-{b+15}" for b in bins[:-1]]
@@ -342,8 +339,12 @@ with tab_1d:
                 df_tmp = df_tmp.dropna(subset=["축구간"])
                 group_col = "축구간"
 
+            elif x_label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
+                # 주중/주말 평균 수면시간은 코드값 그대로 범주형
+                group_col = x_label
+
             else:
-                # 나이 구간/성별/시도/소득 등
+                # 나이, 소득 등
                 x_col = df[x_label]
                 if pd.api.types.is_numeric_dtype(x_col):
                     bins = st.slider("축 구간 수", 4, 20, 8)
@@ -366,7 +367,6 @@ with tab_1d:
                 unique_vals = set(s.unique())
 
                 if unique_vals <= {"예", "아니오", "nan"}:
-                    # '예' 비율
                     df_tmp["is_yes"] = (s == "예").astype(float)
                     res = group_rate(df_tmp, group_col, "is_yes")
                     if res.empty:
@@ -381,7 +381,6 @@ with tab_1d:
                         st.plotly_chart(fig, use_container_width=True)
                         st.dataframe(res)
                 else:
-                    # 스트레스 수준 등: 평균 코드값
                     df_tmp[target_label] = pd.to_numeric(
                         df_tmp[target_label], errors="coerce"
                     )
