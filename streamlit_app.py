@@ -23,7 +23,6 @@ column_labels = {
     'mtb_02z1': '우울감으로 인한 정신상담 여부',
     'mtd_01z1': '자살생각 경험 여부',
     'mtd_02z1': '자살생각으로 인한 정신상담 여부',
-    'fma_13z1': '가구소득',
     '수면 소요시간(분)': '수면 소요시간(분)',
     '잠자는 시각': '잠자는 시각',
     '기상 시각': '기상 시각'
@@ -61,9 +60,9 @@ def time_order_sort(times):
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
 st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·이상치제거)", layout="wide")
-st.title("KCHS | 나이 구간분포·수면·소득·시각 분석 대시보드")
+st.title("KCHS | 나이 10살 구간 필터·수면·소득·시각 분석 대시보드")
 
-# 나이 10살 단위 구간화 + 값 필터링
+# 나이 10살 단위 구간화 + 값 필터링 (필터만 제공, 히스토그램 없음)
 if '만 나이' in df.columns:
     age_min = int(np.nanmin(df['만 나이']))
     age_max = int(np.nanmax(df['만 나이']))
@@ -75,7 +74,7 @@ if '만 나이' in df.columns:
 else:
     age_selected = []
 
-# 필터: 나이구간+기타 변수(시각, 수면, 소득 등)
+# 기타 변수 필터
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
 for label in display_cols:
@@ -90,6 +89,7 @@ for label in display_cols:
     else:
         filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
+# 필터 적용(나이구간+기타 변수)
 filtered = df[display_cols + ['나이 구간(10살 단위)', '나이 구간(10살 단위)_str']].copy()
 if age_selected:
     filtered = filtered[filtered['나이 구간(10살 단위)_str'].isin(age_selected)]
@@ -103,12 +103,7 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 나이 10살 구간 분포 그래프(ONLY) - 만 나이 분포(x)
-if '나이 구간(10살 단위)_str' in filtered.columns:
-    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이 구간 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
-    st.plotly_chart(fig_age)
-
-# 나머지 변수 시각화
+# 시각화: 가구소득, 잠자는/기상 시각, 나머지 수치형 변수
 for label in display_cols:
     if label == '가구소득' and label in filtered.columns:
         soc_col = filtered[label]
@@ -129,5 +124,5 @@ for label in display_cols:
         st.plotly_chart(fig)
 
 st.info(
-    "나이는 10살 단위 구간분포(히스토그램)로만 제공, 모든 주요 변수·분포·정렬·이상치 제거 자동 분석/시각화!"
+    "나이는 10살 단위 구간 필터로만 적용됩니다. 기타 변수(수면·소득·시간 등)는 자동 정렬, 이상치 제거, 분포 분석이 모두 가능합니다."
 )
