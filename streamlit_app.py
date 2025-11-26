@@ -1,12 +1,9 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import numpy as np
 
-# 1. 데이터 불러오기
-df = pd.read_csv('kchs_2024.csv', encoding='utf-8')
+df = pd.read_csv('kchs_clean_ready.csv', encoding='utf-8')
 
-# 2. 변수 원코드 → 한글 질의명
 column_labels = {
     'age': '만 나이',
     'sex': '성별',
@@ -25,17 +22,12 @@ column_labels = {
     'mtb_02z1': '우울감으로 인한 정신상담 여부',
     'mtd_01z1': '자살생각 경험 여부',
     'mtd_02z1': '자살생각으로 인한 정신상담 여부',
-    'edit_mtc_03z1': '잠자는 시각(시)',
-    'mtc_04z1': '잠자는 시각(분)',
-    'mtc_05z1': '수면 소요시간(시)',
-    'mtc_06z1': '수면 소요시간(분)',
-    'mtc_08z1': '기상 시각(시)',
-    'mtc_09z1': '기상 시각(분)',
-    'mtc_13z1': '전반적인 수면의 질',
-    'mtc_14z1': '수면을 위한 약 복용'
+    'fma_13z1': '가구소득',
+    '잠자는 시각': '잠자는 시각',
+    '수면 소요시간(분)': '수면 소요시간(분)',
+    '기상 시각': '기상 시각'
 }
 
-# 3. 코드형 응답 → 의미(Dict)
 response_maps = {
     'sex': {1: '남자', 2: '여자'},
     'CTPRVN_CODE': {11: '서울', 26: '부산', 27: '대구', 28: '인천', 29: '광주', 30: '대전', 31: '울산', 41: '경기', 42: '강원', 43: '충북', 44: '충남', 45: '전북', 46: '전남', 47: '경북', 48: '경남', 49: '제주'},
@@ -47,66 +39,55 @@ response_maps = {
     'mtb_01z1': {1: '예', 2: '아니오'},
     'mtb_02z1': {1: '예', 2: '아니오'},
     'mtd_01z1': {1: '예', 2: '아니오'},
-    'mtd_02z1': {1: '예', 2: '아니오'},
-    'mtc_13z1': {1: '매우 좋음', 2: '상당히 좋음', 3: '상당히 나쁨', 4: '매우 나쁨'},
-    'mtc_14z1': {1: '전혀 없었다', 2: '한 주에 1번', 3: '한 주에 1~2번', 4: '한 주에 3번 이상'},
+    'mtd_02z1': {1: '예', 2: '아니오'}
 }
 
-# 4. 이상치 값(조사 오류/무응답 등)
-OUTLIER_CODES = {77, 88, 99, 999, 9999, None, np.nan}
-
-# 5. 한글 컬럼 및 의미변환 생성, 이상치 자동 제거
-clean_df = df.copy()
 display_cols = []
 for code, label in column_labels.items():
-    if code in response_maps and code in clean_df.columns:
-        clean_df[label] = clean_df[code].map(response_maps[code])
-        # also 이상치 제거 (코드형이면서 의미변환 dict에 없는 값, or 이상치 코드)
-        clean_df = clean_df[~clean_df[code].isin(OUTLIER_CODES)]
+    if code in response_maps and code in df.columns:
+        df[label] = df[code].map(response_maps[code])
         display_cols.append(label)
-    elif code in clean_df.columns:
-        # 숫자형 변수도 이상치값 자동 제거
-        if pd.api.types.is_numeric_dtype(clean_df[code]):
-            clean_df = clean_df[(~clean_df[code].isin(OUTLIER_CODES))]
-        clean_df[label] = clean_df[code]
+    elif code in df.columns:
+        df[label] = df[code]
         display_cols.append(label)
 
-# 6. Sidebar 필터 (숫자형: 슬라이더, 나머지: 전체 선택 multiselect)
-st.set_page_config(page_title="KCHS 설문문항 대시보드", layout="wide")
-st.title("KCHS 모든 설문 문항·응답 의미 (이상치 자동제거) 대시보드")
+st.set_page_config(page_title="KCHS 전처리 설문문항 대시보드", layout="wide")
+st.title("KCHS 전처리설문 데이터·응답 의미 대시보드")
 
 st.sidebar.header("전체 설문 문항 필터")
 filters = {}
 for label in display_cols:
-    col_data = clean_df[label]
-    options = sorted([v for v in col_data.dropna().unique()])
-    # 숫자형이면 슬라이더, 아니면 전체 선택 multiselect
-    if pd.api.types.is_numeric_dtype(col_data) and len(options) > 10:
+    if label not in df.columns: continue
+    options = [v for v in df[label].dropna().unique()]
+    # 시간/분 변수 특수 처리
+    if '분' in label and pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
         min_val, max_val = float(min(options)), float(max(options))
         filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
+    # HH:MM 시각은 범위 필터 대신 단순 값 목록
+    elif label in ['잠자는 시각', '기상 시각']:
+        filters[label] = st.sidebar.multiselect(label, options, default=options)
     else:
         filters[label] = st.sidebar.multiselect(label, options, default=options)
 
-# 7. 필터 적용 (전체 선택 상태에서 데이터 최대 보존)
-filtered = clean_df[display_cols].copy()
+filtered = df[display_cols].copy()
 for label, sel in filters.items():
     col = filtered[label]
-    # 숫자 변수 슬라이더 범위 맞춰 필터링
     if isinstance(sel, tuple) and pd.api.types.is_numeric_dtype(col):
         filtered = filtered[(col >= sel[0]) & (col <= sel[1])]
-    # 선택된 값 중 전체 옵션과 동일하면 필터 미적용(전체 데이터 유지)
-    elif isinstance(sel, list) and 0 < len(sel) < len(clean_df[label].dropna().unique()):
+    elif isinstance(sel, list) and len(sel) < len(df[label].dropna().unique()):
         filtered = filtered[col.isin(sel)]
 
-st.metric("이상치 제거 + 필터 적용 응답자 수", filtered.shape[0])
+st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 8. 한글 설문문항별 분포 시각화(히스토그램/자동)
 for label in display_cols:
-    if label in filtered.columns and filtered[label].notna().sum() > 0:
-        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포 (이상치 자동 제거)")
+    if label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
+        fig = px.histogram(filtered, x=label, title=f"{label} 분포")
         st.plotly_chart(fig)
+    elif label in ['잠자는 시각', '기상 시각'] and label in filtered.columns:
+        st.write(f"{label} 값 빈도")
+        st.dataframe(filtered[label].value_counts())
 
 st.info(
-    "모든 컬럼은 한글 설문문항, 모든 응답(코드형)은 의미변환, 모든 이상치(77,88,99,999,9999,NaN 등)는 자동 제거되어 대시보드가 정상 작동합니다. 복사 후 바로 실행 가능합니다."
+    "수면 소요시간은 (시)+(분) 합산, 잠자는 시각/기상 시각은 HH:MM으로 변환된 데이터에서 모든 변수/응답은 한글로 표시되고, 각 문항별 필터, 분포도, 표가 정상적으로 작동합니다."
 )
