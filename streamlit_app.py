@@ -133,14 +133,14 @@ def group_rate(df_in, group_col, target_col):
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
 tab_dist, tab_1d, tab_2d, tab_help = st.tabs(
-    ["캐릭터·식생활 분포", "1차원 비교", "2차원 비교", "상담 이용률"]
+    ["데이터 분포", "1차원 비교", "2차원 비교", "상담 이용률"]
 )
 
 # ====================================================
 # 탭1: 캐릭터·식생활 분포
 # ====================================================
 with tab_dist:
-    st.title("KCHS | 캐릭터 및 식생활 형편 분포 대시보드")
+    st.title("KCHS | 인구·수면·정신건강 분포 대시보드")
 
     st.subheader("데이터 미리보기")
     preview_cols = [label for label in column_labels.values() if label in df.columns]
@@ -156,7 +156,7 @@ with tab_dist:
         st.plotly_chart(fig_age_bin, use_container_width=True)
 
     if "성별" in df.columns:
-        st.subheader("성별 분포 (원그래프)")
+        st.subheader("성별 분포")
         sex_counts = df["성별"].value_counts(dropna=True).reset_index()
         sex_counts.columns = ["성별", "count"]
         fig_sex_pie = px.pie(
@@ -189,7 +189,7 @@ with tab_dist:
         )
         st.plotly_chart(fig_food, use_container_width=True)
 
-    for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
+    for label in ["가구원수 전체", "가구원수 중 만 19세 이상"]:
         if label in df.columns:
             st.subheader(f"{label} 분포")
             col_val = pd.to_numeric(df[label], errors="coerce").dropna()
@@ -198,7 +198,7 @@ with tab_dist:
                 st.plotly_chart(fig_num, use_container_width=True)
 
     if "가구소득" in df.columns:
-        st.subheader("가구소득(0~20000만원, 이상치 제거) 분포")
+        st.subheader("가구소득 분포")
         soc_col = pd.to_numeric(df["가구소득"], errors="coerce")
         outlier_vals = [90000, 99999, 77777, 88888, 9999]
         soc_clean = soc_col[~soc_col.isin(outlier_vals)]
@@ -217,7 +217,7 @@ with tab_dist:
                 st.plotly_chart(fig_sleep, use_container_width=True)
 
     if "수면 소요시간(분)" in df.columns:
-        st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위, 이상치 제거)")
+        st.subheader("수면 소요시간(분) 분포")
         sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce").dropna()
         if len(sleep_dur) > 0:
             sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
@@ -253,7 +253,7 @@ with tab_dist:
 # 탭2: 1차원 비교
 # ====================================================
 with tab_1d:
-    st.title("KCHS | 1차원 비교 (축 1개 vs 우울·스트레스 지표)")
+    st.title("KCHS | 요인별 정신건강 격차 분석")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -284,7 +284,7 @@ with tab_1d:
             if label in df.columns and label not in axis_candidates:
                 axis_candidates.append(label)
 
-        x_label = st.selectbox("비교할 축(캐릭터/환경/시간·수면·소득 변수)", axis_candidates)
+        x_label = st.selectbox("비교할 축(개인, 가구, 경제, 수면 변수)", axis_candidates)
 
         dep_candidates = []
         for label in [
@@ -404,7 +404,7 @@ with tab_1d:
 # 탭3: 2차원 비교 (축 2개 vs 우울·스트레스 지표)
 # ====================================================
 with tab_2d:
-    st.title("KCHS | 2차원 비교 (축 2개 vs 우울·스트레스 지표)")
+    st.title("KCHS | 교차요인별 정신건강 히트맵")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -567,7 +567,7 @@ with tab_2d:
 # 탭4: 상담 이용률 (우울/자살/스트레스 기준)
 # ====================================================
 with tab_help:
-    st.title("KCHS | 우울·자살·스트레스 경험자 중 상담 이용률")
+    st.title("KCHS | 정신건강 서비스 접근성 및 자가진단 분석")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
