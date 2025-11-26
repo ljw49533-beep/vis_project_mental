@@ -107,14 +107,19 @@ st.info(
 import numpy as np
 import plotly.express as px
 
-# 가구소득 이상치/극단값 제거 후, 선택구간만 시각화 (전체 코드의 가장 마지막 아래에 추가)
-SOC_OUTLIERS = [90000, 99999, 77777, 88888, 9999, None, np.nan]
+# 가구소득 분포 그래프 개선(이 부분만 붙이면 됨)
 if '가구소득' in filtered.columns:
-    soc = filtered['가구소득'].apply(lambda x: np.nan if x in SOC_OUTLIERS else x)
-    minval, maxval = 0, 20000  # 분석구간 조정 가능(예: 0~20000만원)
-    st.subheader("가구소득(0~2억원 구간) 응답 분포(이상치 제거)")
-    # 슬라이더로 원하는 구간만 직관적으로 조절
-    soc_range = st.slider('가구소득 분석구간 (만원)', minval, maxval, (minval, maxval))
-    soc_sub = soc[(soc >= soc_range[0]) & (soc <= soc_range[1])]
-    fig_soc = px.histogram(soc_sub, x='가구소득', title='가구소득 응답 분포 (이상치 제거)', nbins=20)
+    soc_col = filtered['가구소득']
+    # 이상치 코드 + 실질적으로 분석할 최대/최소 값 기준
+    outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
+    minval, maxval = 0, 20000   # 원하는 분석구간
+    soc_clean = soc_col[~soc_col.isin(outlier_vals)]
+    soc_clean = soc_clean[(soc_clean >= minval) & (soc_clean <= maxval)]
+
+    st.subheader("가구소득(0~20000만원 구간, 이상치 제거) 분포")
+    # 시각적으로 더 명확하게 보이게 bin개수 조정 및 x/y축 표시
+    fig_soc = px.histogram(soc_clean, x='가구소득', title='가구소득 응답 분포(정상 구간, 이상치 완전 제외)', nbins=40)
+    fig_soc.update_xaxes(range=[minval, maxval])
     st.plotly_chart(fig_soc)
+
+    st.caption("외곽치(90000, 99999, 77777, 88888 등) 및 상식적 분석구간 이외 값 완전 제거, 실질 분포만 강조!")
