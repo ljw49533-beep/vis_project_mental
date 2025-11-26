@@ -61,27 +61,21 @@ def time_order_sort(times):
         return float('inf')
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
-st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·시간순 구간)", layout="wide")
-st.title("KCHS | 나이 10살 구간, 시각값 시간순 정렬·가구소득 구간·수면 분석")
+st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·시간순·이상치 제거)", layout="wide")
+st.title("KCHS | 나이 10살 구간, 시간/소득/수면 분석 대시보드")
 
-# 나이 10살 단위 구간화
+# 나이 10살 단위 구간화 + 값 필터링
 if '만 나이' in df.columns:
     age_min = int(np.nanmin(df['만 나이']))
     age_max = int(np.nanmax(df['만 나이']))
     bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
     df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
-    age_bins = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
-    age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins, default=age_bins)
+    # Interval → str 변환
+    df['나이 구간(10살 단위)_str'] = df['나이 구간(10살 단위)'].astype(str)
+    age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
+    age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins_str, default=age_bins_str)
 else:
     age_selected = []
-# 나이 구간 그래프 그리기 부분에서만 아래 추가
-if '나이 구간(10살 단위)' in filtered.columns:
-    # Interval → 문자열 변환
-    filtered['나이 구간(10살 단위)_str'] = filtered['나이 구간(10살 단위)'].astype(str)
-    age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
-    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
-    st.plotly_chart(fig_age)
-
 
 # 나머지 변수 필터링
 st.sidebar.header("전체 설문문항 필터")
@@ -99,9 +93,9 @@ for label in display_cols:
         filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
 # 필터 적용(나이구간+기타 변수)
-filtered = df[display_cols + ['나이 구간(10살 단위)']].copy()
+filtered = df[display_cols + ['나이 구간(10살 단위)', '나이 구간(10살 단위)_str']].copy()
 if age_selected:
-    filtered = filtered[filtered['나이 구간(10살 단위)'].astype(str).isin(age_selected)]
+    filtered = filtered[filtered['나이 구간(10살 단위)_str'].isin(age_selected)]
 for label, sel in filters.items():
     col = filtered[label]
     if isinstance(sel, tuple) and pd.api.types.is_numeric_dtype(col):
@@ -112,9 +106,9 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 나이구간 분포
-if '나이 구간(10살 단위)' in filtered.columns:
-    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)': age_bins})
+# 나이구간 분포(Interval→str로 x축 지정)
+if '나이 구간(10살 단위)_str' in filtered.columns:
+    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
     st.plotly_chart(fig_age)
 
 # 나머지 변수 시각화(이전 방식 그대로)
@@ -138,5 +132,5 @@ for label in display_cols:
         st.plotly_chart(fig)
 
 st.info(
-    "만 나이 기준 10살 구간별로 인구 분포, 모든 응답값 시간 및 값 순서대로 자동 분석! 가구소득 등은 이상치·비정상값 제거 후 정상분포만 시각화합니다."
+    "만 나이는 10살 단위 구간별로 분포와 필터 적용 가능, 모든 시간값 정렬 및 분포 시각화, 가구소득 등은 이상치 제거 후 명확한 응답 분석 제공!"
 )
