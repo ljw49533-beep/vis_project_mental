@@ -39,6 +39,7 @@ response_maps = {
         1: "1세대 가구", 2: "2세대 가구", 3: "3세대 이상 가구",
         4: "부부", 5: "한부모", 6: "기타", 7: "응답거부",
     },
+    # 가구유형 코드 1~6, 99
     "nue_01z1": {
         1: "1인",
         2: "2인",
@@ -88,7 +89,6 @@ def time_order_sort(times):
             h, m = s.split(":")
             return int(h) * 60 + int(m)
         return float("inf")
-
     valid_times = [t for t in times if t is not None and pd.notnull(t)]
     return sorted(valid_times, key=time_to_minutes)
 
@@ -136,7 +136,7 @@ if "성별" in df.columns:
         sex_counts,
         names="성별",
         values="count",
-        hole=0.3,  # 도넛 형태, 원그래프 원하면 이 줄 삭제
+        hole=0.3,
     )
     st.plotly_chart(fig_sex_pie, use_container_width=True)
 
@@ -153,16 +153,27 @@ for label in ["시도명", "세대 유형", "기초생활수급자 여부"]:
         st.plotly_chart(fig_cat, use_container_width=True)
 
 # --------------------
-# 4. 가구유형 (1~6·99 순서)
+# 4. 가구유형 (원시 코드 기준 순서 1~6, 99)
 # --------------------
-if "가구유형" in df.columns:
+if "nue_01z1" in df.columns:
     st.subheader("가구유형 분포")
-    type_order = ["1인", "2인", "3인", "4인", "5인", "6인 이상", "모름"]
-    present = [v for v in type_order if v in df["가구유형"].dropna().unique()]
+
+    # 원시 코드 기준으로 정렬
+    raw = pd.to_numeric(df["nue_01z1"], errors="coerce")
+    type_order_code = [1, 2, 3, 4, 5, 6, 99]
+    present_codes = [c for c in type_order_code if c in raw.dropna().unique()]
+
+    # 코드→라벨
+    code_to_label = response_maps["nue_01z1"]
+    df["가구유형_라벨"] = raw.map(code_to_label)
+
+    # 라벨 순서
+    label_order = [code_to_label[c] for c in present_codes]
+
     fig_nue = px.histogram(
         df,
-        x="가구유형",
-        category_orders={"가구유형": present},
+        x="가구유형_라벨",
+        category_orders={"가구유형_라벨": label_order},
     )
     st.plotly_chart(fig_nue, use_container_width=True)
 
@@ -263,5 +274,5 @@ for label in ["잠자는 시각", "기상 시각"]:
 
 st.info(
     "각 그래프는 전체 데이터 기준 캐릭터 변수 분포를 보여줍니다. "
-    "이 페이지를 통해 데이터 구조를 파악한 뒤, 우울 지표와의 관계 분석 페이지를 설계하면 됩니다."
+    "가구유형은 원시 코드(1~6, 99)를 기반으로 라벨링하고 순서를 고정했습니다."
 )
