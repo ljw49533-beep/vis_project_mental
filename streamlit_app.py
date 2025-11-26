@@ -5,6 +5,20 @@ import numpy as np
 
 df = pd.read_csv('kchs_clean_ready.csv', encoding='utf-8')
 
+# 나이 구간(10살 단위) 생성
+if '만 나이' in df.columns:
+    age_min = int(np.nanmin(df['만 나이']))
+    age_max = int(np.nanmax(df['만 나이']))
+    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
+    df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
+    df['나이 구간(10살 단위)_str'] = df['나이 구간(10살 단위)'].astype(str)
+    age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
+    age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins_str, default=age_bins_str)
+else:
+    age_selected = []
+    df['나이 구간(10살 단위)_str'] = ''
+
+# 전체 분석대상 변수
 column_labels = {
     'sex': '성별',
     'CTPRVN_CODE': '시도명',
@@ -41,7 +55,7 @@ response_maps = {
     'mtd_02z1': {1: '예', 2: '아니오'}
 }
 
-# 주요 분석 대상 컬럼 리스트(나이제외)
+# 실제 존재하는 컬럼만 분석 대상
 display_cols = []
 for code, label in column_labels.items():
     if code in response_maps and code in df.columns:
@@ -50,6 +64,7 @@ for code, label in column_labels.items():
     elif code in df.columns:
         df[label] = df[code]
         display_cols.append(label)
+valid_display_cols = [col for col in display_cols if col in df.columns]
 
 def time_order_sort(times):
     def time_to_minutes(s):
@@ -59,25 +74,13 @@ def time_order_sort(times):
         return float('inf')
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
-st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·이상치제거)", layout="wide")
+st.set_page_config(page_title="KCHS 10살 단위 나이 구간 대시보드", layout="wide")
 st.title("KCHS | 10살 단위 나이 구간 분석·수면·소득·시각 대시보드")
 
-# 나이 10살 단위 구간화(필터+그래프, 한살단위 없이)
-if '만 나이' in df.columns:
-    age_min = int(np.nanmin(df['만 나이']))
-    age_max = int(np.nanmax(df['만 나이']))
-    bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
-    df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
-    df['나이 구간(10살 단위)_str'] = df['나이 구간(10살 단위)'].astype(str)
-    age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
-    age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins_str, default=age_bins_str)
-else:
-    age_selected = []
-
-# 사이드바: 나머지 변수 필터ing
+# 나이구간(10살 단위) 필터 + 나머지 변수 필터
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
-for label in display_cols:
+for label in valid_display_cols:
     if label not in df.columns: continue
     options = [v for v in df[label].dropna().unique()]
     if label in ['잠자는 시각', '기상 시각']:
@@ -89,9 +92,10 @@ for label in display_cols:
     else:
         filters[label] = st.sidebar.multiselect(label, sorted(options), default=sorted(options))
 
-# 필터 적용: 나이구간+나머지
-filtered = df[display_cols + ['나이 구간(10살 단위)_str']].copy()
-if age_selected:
+# 필터 적용 (나이+기타 변수)
+base_cols = valid_display_cols + ['나이 구간(10살 단위)_str'] if '나이 구간(10살 단위)_str' in df.columns else valid_display_cols
+filtered = df[base_cols].copy()
+if age_selected and '나이 구간(10살 단위)_str' in filtered.columns:
     filtered = filtered[filtered['나이 구간(10살 단위)_str'].isin(age_selected)]
 for label, sel in filters.items():
     col = filtered[label]
@@ -103,13 +107,15 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 나이 구간(10살 단위) 그래프만 제공(한살단위 없이)
+# 나이 구간(10살 단위) 그래프
 if '나이 구간(10살 단위)_str' in filtered.columns:
-    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이 구간 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
+    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str',
+                          title="10살 단위 나이 구간 분포",
+                          category_orders={'나이 구간(10살 단위)_str': age_bins_str})
     st.plotly_chart(fig_age)
 
-# 나머지 변수 분포 분석/시각화
-for label in display_cols:
+# 나머지 변수 분포 시각화 / 분석
+for label in valid_display_cols:
     if label == '가구소득' and label in filtered.columns:
         soc_col = filtered[label]
         outlier_vals = [90000, 99999, 77777, 88888, 9999, None, np.nan]
@@ -129,5 +135,5 @@ for label in display_cols:
         st.plotly_chart(fig)
 
 st.info(
-    "만 나이 및 필터, 그래프는 10살 단위 구간만 제공합니다. 한살 단위(만 나이) 필터·그래프는 완전히 제외됩니다."
+    "나이는 10살 단위 구간(필터/그래프)만 제공합니다. 모든 변수 안전하게 필터링/분석/시각화/이상치 제거 가능!"
 )
