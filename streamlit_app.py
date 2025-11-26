@@ -99,3 +99,38 @@ st.info(
     "모든 컬럼은 한글 설문문항으로 표기되며, 응답도 사람이 바로 해석하는 의미로 자동 변환됨.\n"
     "필터를 모두 선택하면 원본 전체 데이터(20만+)가 유지되고, 특정 조건만 제외 가능합니다."
 )
+
+# 이상치 컷오프(수면시간 등 극단값 제거)
+def remove_outliers(df, label, min_allowed, max_allowed):
+    if label in df.columns:
+        return df[(df[label] >= min_allowed) & (df[label] <= max_allowed)]
+    return df
+
+# 예시: 수면시간(주중), 수면 소요시간(시/분) 등, 실제 정상 범위 값 기준
+sleep_labels = ['하루 평균 수면시간(주중)', '하루 평균 수면시간(주말)', '수면 소요시간(시)', '수면 소요시간(분)']
+sleep_ranges = {
+    '하루 평균 수면시간(주중)': (3, 12),
+    '하루 평균 수면시간(주말)': (3, 14),
+    '수면 소요시간(시)': (0, 5),
+    '수면 소요시간(분)': (0, 180)
+}
+
+# 기존 필터 적용 결과에서 이상치 제거
+filtered_out = filtered.copy()
+for label in sleep_labels:
+    if label in filtered_out.columns:
+        min_val, max_val = sleep_ranges[label]
+        filtered_out = filtered_out[(filtered_out[label] >= min_val) & (filtered_out[label] <= max_val)]
+
+st.metric("이상치 제거 후 응답자 수", filtered_out.shape[0])
+st.dataframe(filtered_out.head(30))
+
+# 분포 시각화(이상치 제거된 결과 그래프)
+for label in display_cols:
+    # 수면 관련 변수면 filtered_out에서 시각화, 나머지는 filtered에서 시각화
+    if label in sleep_labels and label in filtered_out.columns and filtered_out[label].notna().sum() > 0:
+        fig = px.histogram(filtered_out, x=label, title=f"{label} (이상치 제거) 응답 분포")
+        st.plotly_chart(fig)
+    elif label not in sleep_labels and label in filtered.columns and filtered[label].notna().sum() > 0:
+        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
+        st.plotly_chart(fig)
