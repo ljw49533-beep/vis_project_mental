@@ -132,7 +132,7 @@ def group_rate(df_in, group_col, target_col):
 # 2. 탭 구성
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
-tab_dist, tab_1d = st.tabs(["캐릭터·식생활 분포", "1차원 비교"])
+tab_dist, tab_1d, tab_2d = st.tabs(["캐릭터·식생활 분포", "1차원 비교", "2차원 비교"])
 
 # ====================================================
 # 탭1: 캐릭터·식생활 분포
@@ -416,3 +416,192 @@ with tab_1d:
                         )
                         st.plotly_chart(fig, use_container_width=True)
                         st.dataframe(res)
+# ====================================================
+# 탭3: 2차원 비교 (축 2개 vs 우울·스트레스 지표)
+# ====================================================
+with tab_2d:
+    st.title("KCHS | 2차원 비교 (축 2개 vs 우울·스트레스 지표)")
+
+    if len(df) == 0:
+        st.warning("데이터가 없습니다.")
+    else:
+        # 2D에서 사용할 축 후보:
+        # 나이 구간, 성별, 시도, 세대유형, 기초생활수급, 식생활, 시간, 수면·소득 구간 등
+        axis_candidates = []
+
+        if "나이 구간(10살 단위)" in df.columns:
+            axis_candidates.append("나이 구간(10살 단위)")
+
+        for label in [
+            "성별",
+            "시도명",
+            "세대 유형",
+            "기초생활수급자 여부",
+            "식생활 형편",
+            "잠자는 시각",
+            "기상 시각",
+        ]:
+            if label in df.columns and label not in axis_candidates:
+                axis_candidates.append(label)
+
+        # 수면·소득 같은 수치형은 2차원에서도 구간화해서 범주형으로 사용
+        for label in [
+            "하루 평균 수면시간(주중)",
+            "하루 평균 수면시간(주말)",
+            "수면 소요시간(분)",
+            "가구소득",
+        ]:
+            if label in df.columns and label not in axis_candidates:
+                axis_candidates.append(label)
+
+        if len(axis_candidates) < 2:
+            st.warning("2차원 비교에 사용할 축이 2개 이상 필요합니다.")
+        else:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                axis1 = st.selectbox("축 1 (행, Row)", axis_candidates, index=0, key="axis1_2d")
+            with col_b:
+                axis2 = st.selectbox("축 2 (열, Column)", axis_candidates, index=1, key="axis2_2d")
+
+            if axis1 == axis2:
+                st.warning("축 1과 축 2는 서로 다른 변수를 선택해야 합니다.")
+                st.stop()
+
+            # 타깃 지표 후보 (한글 문항만)
+            dep_candidates = []
+            for label in [
+                "우울감 경험 여부",
+                "우울감으로 인한 정신상담 여부",
+                "자살생각 경험 여부",
+                "자살생각으로 인한 정신상담 여부",
+                "주관적 스트레스 수준",
+                "스트레스로 인한 정신상담 여부",
+            ]:
+                if label in df.columns:
+                    dep_candidates.append(label)
+
+            target_label = st.selectbox("우울·스트레스 관련 지표 선택 (2D)", dep_candidates)
+
+            # -------------------------
+            # 1) 축1·축2를 모두 범주형으로 만들기
+            # -------------------------
+            df_tmp = df[[axis1, axis2, target_label]].copy().dropna()
+            if df_tmp.empty:
+                st.warning("선택한 축과 우울 지표 조합에 데이터가 없습니다.")
+                st.stop()
+
+            def make_binned_col(df_in, col):
+                """수치형 축을 범주형 구간으로 바꾸는 헬퍼"""
+                series = df_in[col]
+                # 시간 문자열이면 그대로
+                if col in ["잠자는 시각", "기상 시각"]:
+                    return col, df_in[col]
+
+                # 수면 소요시간: 0~360, 15분 단위
+                if col == "수면 소요시간(분)":
+                    s = pd.to_numeric(series, errors="coerce")
+                    s = s[(s > 0) & (s <= 360)]
+                    df_sub = df_in.loc[s.index].copy()
+                    bins = list(range(0, 361, 15))
+                    labels = [f"{b}-{b+15}" for b in bins[:-1]]
+                    df_sub[col + "_bin"] = pd.cut(
+                        s, bins=bins, labels=labels, right=False
+                    )
+                    return col + "_bin", df_sub[col + "_bin"]
+
+                # 주중/주말 수면시간: 코드값 그대로
+                if col in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
+                    return col, series
+
+                # 가구소득: 0~20000, 2000단위
+                if col == "가구소득":
+                    s = pd.to_numeric(series, errors="coerce")
+                    out_vals = [90000, 99999, 77777, 88888, 9999]
+                    s = s[~s.isin(out_vals)]
+                    s = s[(s >= 0) & (s <= 20000)]
+                    df_sub = df_in.loc[s.index].copy()
+                    bins = list(range(0, 20001, 2000))
+                    labels = [f"{b}-{b+2000}" for b in bins[:-1]]
+                    df_sub[col + "_bin"] = pd.cut(
+                        s, bins=bins, labels=labels, right=False
+                    )
+                    return col + "_bin", df_sub[col + "_bin"]
+
+                # 나머지 수치형: 6구간 고정
+                if pd.api.types.is_numeric_dtype(series):
+                    s = pd.to_numeric(series, errors="coerce")
+                    df_sub = df_in.copy()
+                    df_sub[col + "_bin"] = pd.cut(
+                        s, bins=6, include_lowest=True
+                    )
+                    # Interval을 문자열로 변환 (Plotly 안전)
+                    df_sub[col + "_bin"] = df_sub[col + "_bin"].astype(str)
+                    return col + "_bin", df_sub[col + "_bin"]
+
+                # 이미 범주형이면 그대로
+                return col, series
+
+            # 먼저 축1 가공
+            new_col1, new_series1 = make_binned_col(df_tmp, axis1)
+            df_tmp = df_tmp.loc[new_series1.dropna().index]
+            df_tmp[new_col1] = new_series1.dropna()
+
+            # 축2 가공 (축1에서 줄어든 인덱스 기준 재사용)
+            new_col2, new_series2 = make_binned_col(df_tmp, axis2)
+            df_tmp = df_tmp.loc[new_series2.dropna().index]
+            df_tmp[new_col2] = new_series2.dropna()
+
+            if df_tmp.empty:
+                st.warning("축 1·축 2를 구간화한 뒤 남은 데이터가 없습니다.")
+                st.stop()
+
+            # -------------------------
+            # 2) 타깃 처리 및 피벗
+            # -------------------------
+            s = df_tmp[target_label].astype(str)
+            unique_vals = set(s.unique())
+
+            if unique_vals <= {"예", "아니오", "nan"}:
+                # 예/아니오 문항 → '예' 비율
+                df_tmp["is_yes"] = (s == "예").astype(float)
+                value_col = "is_yes"
+                is_binary = True
+            else:
+                # 스트레스 수준 등 → 평균 코드값
+                df_tmp[target_label] = pd.to_numeric(
+                    df_tmp[target_label], errors="coerce"
+                )
+                value_col = target_label
+                is_binary = False
+
+            tmp = df_tmp[[new_col1, new_col2, value_col]].dropna()
+            if tmp.empty:
+                st.warning("선택한 변수 조합에 데이터가 없습니다.")
+                st.stop()
+
+            pivot = (
+                tmp.groupby([new_col1, new_col2])[value_col]
+                .mean()
+                .reset_index()
+            )
+            if is_binary:
+                pivot["값"] = pivot[value_col] * 100
+                z_label = "비율(%)"
+            else:
+                pivot["값"] = pivot[value_col]
+                z_label = "평균 코드값"
+
+            heat = pivot.pivot(index=new_col1, columns=new_col2, values="값")
+
+            st.markdown("#### 교차표 (행: 축 1, 열: 축 2)")
+            st.dataframe(heat)
+
+            fig = px.imshow(
+                heat,
+                text_auto=".1f",
+                aspect="auto",
+                color_continuous_scale="Reds",
+                labels=dict(color=z_label),
+                title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
+            )
+            st.plotly_chart(fig, use_container_width=True)
