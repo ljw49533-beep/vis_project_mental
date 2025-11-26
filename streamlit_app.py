@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
+# 전처리 결과 파일을 불러옴
 df = pd.read_csv('kchs_clean_ready.csv', encoding='utf-8')
 
 column_labels = {
@@ -23,8 +24,8 @@ column_labels = {
     'mtd_01z1': '자살생각 경험 여부',
     'mtd_02z1': '자살생각으로 인한 정신상담 여부',
     'fma_13z1': '가구소득',
-    '잠자는 시각': '잠자는 시각',
     '수면 소요시간(분)': '수면 소요시간(분)',
+    '잠자는 시각': '잠자는 시각',
     '기상 시각': '기상 시각'
 }
 
@@ -51,19 +52,20 @@ for code, label in column_labels.items():
         df[label] = df[code]
         display_cols.append(label)
 
-st.set_page_config(page_title="KCHS 전처리 설문문항 대시보드", layout="wide")
-st.title("KCHS 전처리설문 데이터·응답 의미 대시보드")
+st.set_page_config(page_title="KCHS 깨끗한 설문문항 대시보드", layout="wide")
+st.title("KCHS 데이터: 필터/시각화 (수면시각 HH:00·HH:30, 소요시간 합산)")
 
-st.sidebar.header("전체 설문 문항 필터")
+st.sidebar.header("전체 설문문항(한글) 필터")
 filters = {}
 for label in display_cols:
-    if label not in df.columns: continue
+    if label not in df.columns:
+        continue
     options = [v for v in df[label].dropna().unique()]
-    # 시간/분 변수 특수 처리
+    # 소요시간·주중/주말 수면시간은 슬라이더!
     if '분' in label and pd.api.types.is_numeric_dtype(df[label]) and len(options) > 10:
         min_val, max_val = float(min(options)), float(max(options))
         filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
-    # HH:MM 시각은 범위 필터 대신 단순 값 목록
+    # HH:00/HH:30 시각은 카테고리 멀티셀렉트
     elif label in ['잠자는 시각', '기상 시각']:
         filters[label] = st.sidebar.multiselect(label, options, default=options)
     else:
@@ -81,13 +83,15 @@ st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
 for label in display_cols:
+    # 소요시간·평균수면 등은 수치형 분포(히스토그램)
     if label in filtered.columns and filtered[label].notna().sum() > 0 and pd.api.types.is_numeric_dtype(filtered[label]):
-        fig = px.histogram(filtered, x=label, title=f"{label} 분포")
+        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
         st.plotly_chart(fig)
+    # HH:00/HH:30 시각은 카운트로 막대/빈도 보기
     elif label in ['잠자는 시각', '기상 시각'] and label in filtered.columns:
-        st.write(f"{label} 값 빈도")
-        st.dataframe(filtered[label].value_counts())
+        fig = px.histogram(filtered, x=label, title=f"{label} (30분 단위) 응답 빈도")
+        st.plotly_chart(fig)
 
 st.info(
-    "수면 소요시간은 (시)+(분) 합산, 잠자는 시각/기상 시각은 HH:MM으로 변환된 데이터에서 모든 변수/응답은 한글로 표시되고, 각 문항별 필터, 분포도, 표가 정상적으로 작동합니다."
+    "수면시각과 기상시각은 30분 단위(HH:00/HH:30)로, 소요시간은 합산 '분' 단위로 분석합니다. 모든 변수는 한글문항·의미로 필터/표/그래프로 제공됩니다."
 )
