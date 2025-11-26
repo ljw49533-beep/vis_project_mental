@@ -52,7 +52,6 @@ for code, label in column_labels.items():
         df[label] = df[code]
         display_cols.append(label)
 
-# 시간값 정렬 함수
 def time_order_sort(times):
     def time_to_minutes(s):
         if isinstance(s, str) and ':' in s:
@@ -61,23 +60,22 @@ def time_order_sort(times):
         return float('inf')
     return sorted([t for t in times if t is not None and pd.notnull(t)], key=time_to_minutes)
 
-st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·시간순·이상치 제거)", layout="wide")
-st.title("KCHS | 나이 10살 구간, 시간/소득/수면 분석 대시보드")
+st.set_page_config(page_title="KCHS 분석 대시보드(나이 구간·이상치제거)", layout="wide")
+st.title("KCHS | 나이 구간 필터·수면·소득·시각 분석 대시보드")
 
-# 나이 10살 단위 구간화 + 값 필터링
+# 나이 10살 단위 구간화 + 값 필터링(히스토그램은 그리지 않고 필터만 제공)
 if '만 나이' in df.columns:
     age_min = int(np.nanmin(df['만 나이']))
     age_max = int(np.nanmax(df['만 나이']))
     bin_edges = list(range(age_min // 10 * 10, age_max + 10, 10))
     df['나이 구간(10살 단위)'] = pd.cut(df['만 나이'], bins=bin_edges, right=False)
-    # Interval → str 변환
     df['나이 구간(10살 단위)_str'] = df['나이 구간(10살 단위)'].astype(str)
     age_bins_str = [str(interval) for interval in sorted(df['나이 구간(10살 단위)'].dropna().unique())]
     age_selected = st.sidebar.multiselect("나이 구간(10살 단위)", age_bins_str, default=age_bins_str)
 else:
     age_selected = []
 
-# 나머지 변수 필터링
+# 기타 변수 사이드바 필터
 st.sidebar.header("전체 설문문항 필터")
 filters = {}
 for label in display_cols:
@@ -106,12 +104,7 @@ for label, sel in filters.items():
 st.metric("필터 적용 후 응답자 수", filtered.shape[0])
 st.dataframe(filtered.head(30))
 
-# 나이구간 분포(Interval→str로 x축 지정)
-if '나이 구간(10살 단위)_str' in filtered.columns:
-    fig_age = px.histogram(filtered, x='나이 구간(10살 단위)_str', title="10살 단위 나이별 분포", category_orders={'나이 구간(10살 단위)_str': age_bins_str})
-    st.plotly_chart(fig_age)
-
-# 나머지 변수 시각화(이전 방식 그대로)
+# 시각화: 가구소득, 잠서는/기상시각, 나머지 수치형 변수
 for label in display_cols:
     if label == '가구소득' and label in filtered.columns:
         soc_col = filtered[label]
@@ -132,5 +125,5 @@ for label in display_cols:
         st.plotly_chart(fig)
 
 st.info(
-    "만 나이는 10살 단위 구간별로 분포와 필터 적용 가능, 모든 시간값 정렬 및 분포 시각화, 가구소득 등은 이상치 제거 후 명확한 응답 분석 제공!"
+    "나이(만 나이)는 10살 구간필터로만 제공, 모든 주요 변수 응답값/수면소득/시간은 자동정렬 분포로 빠르게 분석·시각화할 수 있습니다."
 )
