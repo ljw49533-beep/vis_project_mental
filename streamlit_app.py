@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 df = pd.read_csv('kchs_2024.csv', encoding='utf-8')
 
-# 사진에서 정의된 변수 → 한글 질문 mapping
+# 변수 코드명 → 한글 질문명 매핑
 column_labels = {
     'age': '만 나이',
     'sex': '성별',
@@ -32,7 +33,7 @@ column_labels = {
     'mtc_14z1': '수면을 위한 약 복용'
 }
 
-# 주요 코드형 변수 응답 → 의미 (사진 내 문항)
+# 코드형 변수 응답 → 의미 (설문/캡쳐 기반)
 response_maps = {
     'sex': {1: '남자', 2: '여자'},
     'CTPRVN_CODE': {
@@ -55,52 +56,52 @@ response_maps = {
     'mtd_01z1': {1: '예', 2: '아니오'},
     'mtd_02z1': {1: '예', 2: '아니오'},
     'mtc_13z1': {1: '매우 좋음', 2: '상당히 좋음', 3: '상당히 나쁨', 4: '매우 나쁨'},
-    'mtc_14z1': {1: '전혀 없었다', 2: '한 주에 1번', 3: '한 주에 1~2번', 4: '한 주에 3번 이상'}
-    # 기타 수치(나이, 인원, 시계/분 등)는 숫자 그대로 의미가 명확하므로 변환 불필요.
+    'mtc_14z1': {1: '전혀 없었다', 2: '한 주에 1번', 3: '한 주에 1~2번', 4: '한 주에 3번 이상'},
+    # 필요에 따라 추가 변환 dict 확장
 }
 
-# 응답 코드형 컬럼 → 의미로 변환, 기타는 숫자 그대로
-display_dict = {}
-for col in column_labels:
-    label = column_labels[col]
-    if col in response_maps and col in df.columns:
-        df[label] = df[col].map(response_maps[col])
-        display_dict[label] = df[label]
-    elif col in df.columns:
-        df[label] = df[col] # 숫자는 의미 그대로
-        display_dict[label] = df[label]
+# 한글 컬럼 생성(의미변환) 및 numeric 컬럼은 그대로
+display_cols = []
+for code, label in column_labels.items():
+    if code in response_maps and code in df.columns:
+        df[label] = df[code].map(response_maps[code])
+        display_cols.append(label)
+    elif code in df.columns:
+        df[label] = df[code]
+        display_cols.append(label)
 
-# Streamlit 사이드바에 무조건 모든 문항(한글 풀네임)으로 필터 등장
-st.sidebar.header("모든 설문 문항(한글) 필터")
+# 사이드바 필터: 모든 컬럼(문항 한글명) 등장, 응답에서 모름/응답거부/빈값 빠짐
+st.sidebar.header("전체 문항 필터(한글/의미)")
 filters = {}
-for label in column_labels.values():
-    if label in df.columns:
-        options = sorted(df[label].dropna().unique())
-        if df[label].dtype in [int, float] and len(options) > 10:
-            min_val, max_val = min(options), max(options)
-            filters[label] = st.sidebar.slider(label, float(min_val), float(max_val), (float(min_val), float(max_val)))
-        else:
-            filters[label] = st.sidebar.multiselect(label, options, options)
+for label in display_cols:
+    # 빈값/모름/응답거부 제외
+    options = [v for v in df[label].dropna().unique() if v not in ['모름', '응답거부', '', None]]
+    # 숫자형/구간이면 슬라이더, 나머지는 멀티셀렉트
+    if df[label].dtype in ['int64', 'float64'] and len(options) > 10:
+        min_val, max_val = float(min(options)), float(max(options))
+        filters[label] = st.sidebar.slider(label, min_val, max_val, (min_val, max_val))
+    else:
+        filters[label] = st.sidebar.multiselect(label, options, options)
 
 # 필터 적용
-filtered = df.copy()
+filtered = df[display_cols].copy()
 for label, sel in filters.items():
-    if isinstance(sel, tuple) and label in filtered.columns and filtered[label].dtype in [int, float]:
+    if isinstance(sel, tuple) and filtered[label].dtype in ['int64', 'float64']:
         filtered = filtered[(filtered[label] >= sel[0]) & (filtered[label] <= sel[1])]
-    elif label in filtered.columns and len(sel) > 0:
+    elif len(sel) > 0:
         filtered = filtered[filtered[label].isin(sel)]
 
-st.title("KCHS 모든 설문 문항(한글) 및 응답 의미 대시보드")
+# 결과 및 시각화
+st.title("KCHS 모든 설문 문항(한글) 및 응답 의미 시각화")
+st.metric("필터 적용 후 응답자 수", filtered.shape[0])
+st.dataframe(filtered.head(30))
 
-st.metric("필터 적용 응답자 수", filtered.shape[0])
-st.dataframe(filtered[list(column_labels.values())].head(30))
-
-# 주요 문항별 한글 분포 시각화
-for label in column_labels.values():
-    if label in filtered.columns:
-        fig = px.histogram(filtered, x=label, title=f"{label} 분포")
+for label in display_cols:
+    if filtered[label].notna().sum() > 0:
+        fig = px.histogram(filtered, x=label, title=f"{label} 응답 분포")
         st.plotly_chart(fig)
 
 st.info(
-    "모든 변수는 코드명이 아닌 실제 설문 한글 문항, 응답도 사람이 바로 해석할 수 있는 의미로 변환되어 표시됩니다. 빈값·모름·응답거부는 기본적으로 제외."
+    "✅ 모든 설문 문항이 한글 질문명/의미로 표시되며, 응답도 사람이 이해 가능한 문장으로 변환됨.\n"
+    "❗ 빈값/모름/응답거부는 자동 제외. 복사/실행 후 그대로 사용 가능합니다."
 )
