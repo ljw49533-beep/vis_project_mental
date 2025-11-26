@@ -202,6 +202,7 @@ st.dataframe(filtered.head(30))
 
 # --------------------
 # 나이 구간(10살 단위) 분포만 시각화
+#   (만 나이 1살 단위 히스토그램은 없음)
 # --------------------
 if "나이 구간(10살 단위)_str" in filtered.columns:
     fig_age = px.histogram(
@@ -249,9 +250,10 @@ for label in display_cols:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # 일반 수치 변수: 기본 히스토그램
+    # 일반 수치 변수: 만 나이 제외 기본 히스토그램
     elif (
-        filtered[label].notna().sum() > 0
+        label != "만 나이"  # 여기서 만 나이 히스토그램을 명시적으로 제외
+        and filtered[label].notna().sum() > 0
         and pd.api.types.is_numeric_dtype(filtered[label])
     ):
         fig = px.histogram(
@@ -265,7 +267,7 @@ for label in display_cols:
 # 안내 문구
 # --------------------
 st.info(
-    "만 나이는 10살 단위 구간으로만 분포와 필터를 제공하고, "
-    "시간 변수는 시간순으로 정렬해 시각화하며, "
-    "가구소득 등은 이상치를 제거한 뒤 분포를 보여줍니다."
+    "만 나이는 10살 단위 구간 그래프만 제공하며, "
+    "시간 변수는 시간순으로 정렬해 시각화하고, "
+    "가구소득은 이상치를 제거한 뒤 분포를 보여줍니다."
 )
