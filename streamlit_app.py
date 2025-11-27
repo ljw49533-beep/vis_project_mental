@@ -255,7 +255,6 @@ with tab_dist:
                 fig_sleep = px.histogram(
                     x=col_val,
                     nbins=30,
-                    marginal="box",              # 딱 이 한 줄만 추가[web:60]
                     color_discrete_sequence=COLOR_CAT,
                 )
                 fig_sleep = style_fig(fig_sleep, y_title="빈도")
@@ -587,15 +586,6 @@ with tab_2d:
                             fig_h = style_fig(fig_h, y_title=z_label)
                             st.plotly_chart(fig_h, use_container_width=True)
                             st.dataframe(heat, use_container_width=True)
-                            st.dataframe(heat, use_container_width=True)
-                            row_sel = st.selectbox("요인 1에서 자세히 볼 그룹 선택", heat.index.tolist())
-                            row_series = heat.loc[row_sel].reset_index()
-                            row_series.columns = [axis2, "값"]
-                            fig_row = px.bar(row_series, x=axis2, y="값", color_discrete_sequence=COLOR_CAT)
-                            fig_row = style_fig(fig_row, y_title=z_label)
-                            st.subheader(f"'{row_sel}' 그룹에서 요인 2별 {target_label}")
-                            st.plotly_chart(fig_row, use_container_width=True)
-
 
 # ====================================================
 # 탭4: 상담 이용률 (우울/자살/스트레스 기준)
