@@ -5,10 +5,10 @@ import plotly.io as pio
 import numpy as np
 
 # ====================================================
-# 0. 전역 스타일
+# 0. 전역 스타일 (가벼운 디자인 개선)
 # ====================================================
-pio.templates.default = "plotly_white"
-COLOR_CAT = px.colors.qualitative.Set2
+pio.templates.default = "plotly_white"  # 밝은 테마[web:46]
+COLOR_CAT = px.colors.qualitative.Set2  # 범주형 팔레트[web:46]
 
 # ====================================================
 # 1. 데이터 불러오기
@@ -132,17 +132,13 @@ def group_rate(df_in, group_col, target_col):
         grp["값"] = grp["값"] * 100
     return grp
 
-# 공통 layout: trace 이름/legend/legend title 제거 + y축 제목 기본값
-def style_fig(fig, y_title="count"):
-    fig.for_each_trace(lambda t: t.update(name=""))  # trace name 비우기[web:46]
+# 공통 layout 살짝 손보기
+def style_fig(fig):
     fig.update_layout(
         font=dict(size=13),
         title_font_size=18,
         margin=dict(t=60, l=40, r=20, b=60),
-        showlegend=False,
-        legend_title_text="",
     )
-    fig.update_yaxes(title_text=y_title)
     return fig
 
 # ====================================================
@@ -171,7 +167,7 @@ with tab_dist:
             category_orders={"나이 구간(10살 단위)": age_bins_str},
             color_discrete_sequence=COLOR_CAT,
         )
-        fig_age = style_fig(fig_age, y_title="빈도")
+        fig_age = style_fig(fig_age)
         st.plotly_chart(fig_age, use_container_width=True)
 
     if "성별" in df.columns:
@@ -186,7 +182,7 @@ with tab_dist:
             color_discrete_sequence=COLOR_CAT,
             hole=0.3,
         )
-        fig_sex = style_fig(fig_sex, y_title="")
+        fig_sex = style_fig(fig_sex)
         st.plotly_chart(fig_sex, use_container_width=True)
 
     for label in ["시도명", "세대 유형", "기초생활수급자 여부"]:
@@ -197,7 +193,7 @@ with tab_dist:
                 x=label,
                 color_discrete_sequence=COLOR_CAT,
             )
-            fig_cat = style_fig(fig_cat, y_title="빈도")
+            fig_cat = style_fig(fig_cat)
             st.plotly_chart(fig_cat, use_container_width=True)
 
     if "식생활 형편" in df.columns:
@@ -215,7 +211,7 @@ with tab_dist:
             category_orders={"식생활 형편": present},
             color_discrete_sequence=COLOR_CAT,
         )
-        fig_food = style_fig(fig_food, y_title="빈도")
+        fig_food = style_fig(fig_food)
         st.plotly_chart(fig_food, use_container_width=True)
 
     for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
@@ -228,7 +224,7 @@ with tab_dist:
                     nbins=10,
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_num = style_fig(fig_num, y_title="빈도")
+                fig_num = style_fig(fig_num)
                 st.plotly_chart(fig_num, use_container_width=True)
 
     if "가구소득" in df.columns:
@@ -244,7 +240,7 @@ with tab_dist:
                 color_discrete_sequence=COLOR_CAT,
             )
             fig_soc.update_xaxes(range=[0, 20000])
-            fig_soc = style_fig(fig_soc, y_title="빈도")
+            fig_soc = style_fig(fig_soc)
             st.plotly_chart(fig_soc, use_container_width=True)
 
     for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
@@ -257,7 +253,7 @@ with tab_dist:
                     nbins=30,
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sleep = style_fig(fig_sleep, y_title="빈도")
+                fig_sleep = style_fig(fig_sleep)
                 st.plotly_chart(fig_sleep, use_container_width=True)
 
     if "수면 소요시간(분)" in df.columns:
@@ -277,7 +273,7 @@ with tab_dist:
                     x="수면 소요시간(분 구간)",
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sd = style_fig(fig_sd, y_title="빈도")
+                fig_sd = style_fig(fig_sd)
                 st.plotly_chart(fig_sd, use_container_width=True)
 
     for label in ["잠자는 시각", "기상 시각"]:
@@ -291,7 +287,7 @@ with tab_dist:
                     category_orders={label: times_sorted},
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_t = style_fig(fig_t, y_title="빈도")
+                fig_t = style_fig(fig_t)
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
@@ -349,6 +345,7 @@ with tab_1d:
         if df_tmp.empty:
             st.warning("선택한 요인과 정신건강 지표 조합에 데이터가 없습니다.")
         else:
+            # 요인 그룹 처리
             if x_label in ["잠자는 시각", "기상 시각"]:
                 group_col = x_label
 
@@ -409,13 +406,11 @@ with tab_1d:
                 if unique_vals <= {"예", "아니오", "nan"}:
                     df_tmp["is_yes"] = (s == "예").astype(float)
                     res = group_rate(df_tmp, group_col, "is_yes")
-                    y_title = "비율(%)"
                 else:
                     df_tmp[target_label] = pd.to_numeric(
                         df_tmp[target_label], errors="coerce"
                     )
                     res = group_rate(df_tmp, group_col, target_label)
-                    y_title = "평균 코드값"
 
                 if res.empty:
                     st.warning("그룹별 결과가 없습니다.")
@@ -427,7 +422,7 @@ with tab_1d:
                         color_discrete_sequence=COLOR_CAT,
                     )
                     fig.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-                    fig = style_fig(fig, y_title=y_title)
+                    fig = style_fig(fig)
                     st.plotly_chart(fig, use_container_width=True)
                     st.dataframe(res, use_container_width=True)
 
@@ -582,8 +577,7 @@ with tab_2d:
                                 color_continuous_scale="Blues",
                                 title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
                             )
-                            fig_h.update_coloraxes(colorbar_title_text="")
-                            fig_h = style_fig(fig_h, y_title=z_label)
+                            fig_h = style_fig(fig_h)
                             st.plotly_chart(fig_h, use_container_width=True)
                             st.dataframe(heat, use_container_width=True)
 
@@ -720,6 +714,6 @@ with tab_help:
                                 color_discrete_sequence=COLOR_CAT,
                             )
                             fig.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-                            fig = style_fig(fig, y_title="상담 '예' 비율(%)")
+                            fig = style_fig(fig)
                             st.plotly_chart(fig, use_container_width=True)
                             st.dataframe(res, use_container_width=True)
