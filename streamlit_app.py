@@ -149,8 +149,8 @@ def style_fig(fig, y_title="count"):
 # 3. 탭 구성
 # ====================================================
 st.set_page_config(page_title="KCHS 우울 분석", layout="wide")
-tab_dist, tab_1d, tab_2d, tab_help, tab_corr = st.tabs(
-    ["데이터 분포", "요인별 1차원 비교", "요인별 2차원 비교", "상담 이용률 분석", "상관/연관성 탐색"]
+tab_dist, tab_1d, tab_2d, tab_help = st.tabs(
+    ["데이터 분포", "요인별 1차원 비교", "요인별 2차원 비교", "상담 이용률 분석"]
 )
 
 # ====================================================
@@ -723,73 +723,3 @@ with tab_help:
                             fig = style_fig(fig, y_title="상담 '예' 비율(%)")
                             st.plotly_chart(fig, use_container_width=True)
                             st.dataframe(res, use_container_width=True)
-# 그리고 파일 맨 아래에 이 블록 추가
-with tab_corr:
-    st.title("KCHS | 상관/연관성 탐색")
-
-    st.markdown(
-        "###### 수면·소득·스트레스 변수와 우울/자살 지표 사이의 연관성을 산점도와 추세선으로 살펴봅니다."
-    )
-
-    # X축 후보 (연속/순서형 위주)
-    x_candidates = []
-    for label in [
-        "만 나이",
-        "하루 평균 수면시간(주중)",
-        "하루 평균 수면시간(주말)",
-        "수면 소요시간(분)",
-        "가구소득",
-    ]:
-        if label in df.columns:
-            x_candidates.append(label)
-
-    # Y축 후보 (정신건강 관련 지표)
-    y_candidates = []
-    for label in [
-        "주관적 스트레스 수준",
-        "우울감 경험 여부",
-        "자살생각 경험 여부",
-    ]:
-        if label in df.columns:
-            y_candidates.append(label)
-
-    if not x_candidates or not y_candidates:
-        st.warning("상관 분석에 사용할 변수들이 충분하지 않습니다.")
-    else:
-        col_x, col_y = st.columns(2)
-        with col_x:
-            x_var = st.selectbox("X축 (설명 변수)", x_candidates)
-        with col_y:
-            y_var = st.selectbox("Y축 (반응 변수)", y_candidates)
-
-        df_tmp = df[[x_var, y_var]].copy().dropna()
-        if df_tmp.empty:
-            st.warning("선택한 변수 조합에 데이터가 없습니다.")
-        else:
-            # 이항 변수는 0/1로 변환
-            if set(df_tmp[y_var].astype(str).unique()) <= {"예", "아니오", "nan"}:
-                df_tmp[y_var] = (df_tmp[y_var] == "예").astype(int)
-
-            # 수치형으로 변환
-            df_tmp[x_var] = pd.to_numeric(df_tmp[x_var], errors="coerce")
-            df_tmp[y_var] = pd.to_numeric(df_tmp[y_var], errors="coerce")
-            df_tmp = df_tmp.dropna()
-            if df_tmp.empty:
-                st.warning("수치형으로 변환 후 남은 데이터가 없습니다.")
-            else:
-                # 피어슨 상관계수
-                corr = df_tmp[x_var].corr(df_tmp[y_var])
-                st.markdown(f"**피어슨 상관계수 (r)**: {corr:.3f}")
-
-                st.caption("※ 상관계수는 연관성만 보여줄 뿐, 인과관계를 의미하지는 않습니다.")
-
-                # 산점도 + OLS 추세선 (statsmodels 설치 필요)[web:117][web:122]
-                fig_scatter = px.scatter(
-                    df_tmp,
-                    x=x_var,
-                    y=y_var,
-                    trendline="ols",
-                    color_discrete_sequence=COLOR_CAT,
-                )
-                fig_scatter = style_fig(fig_scatter, y_title=y_var)
-                st.plotly_chart(fig_scatter, use_container_width=True)
