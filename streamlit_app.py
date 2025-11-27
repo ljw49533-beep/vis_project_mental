@@ -5,13 +5,10 @@ import plotly.io as pio
 import numpy as np
 
 # ====================================================
-# 0. Plotly / Streamlit 전역 스타일 설정
+# 0. 전역 스타일 (가벼운 디자인 개선)
 # ====================================================
-# 밝은 배경 + 굵은 색 대비
-pio.templates.default = "plotly_white"
-
-COLOR_CAT = px.colors.qualitative.Set2       # 범주형 색상 팔레트[web:46]
-COLOR_SEQ = px.colors.sequential.Blues       # 연속형 색상 팔레트[web:54]
+pio.templates.default = "plotly_white"  # 밝은 테마[web:46]
+COLOR_CAT = px.colors.qualitative.Set2  # 범주형 팔레트[web:46]
 
 # ====================================================
 # 1. 데이터 불러오기
@@ -135,17 +132,13 @@ def group_rate(df_in, group_col, target_col):
         grp["값"] = grp["값"] * 100
     return grp
 
-# 공통 layout 튜닝 함수
-def style_fig(fig, y_title=None):
+# 공통 layout 살짝 손보기
+def style_fig(fig):
     fig.update_layout(
         font=dict(size=13),
         title_font_size=18,
         margin=dict(t=60, l=40, r=20, b=60),
     )
-    if y_title:
-        fig.update_yaxes(title_text=y_title)
-    fig.update_xaxes(title_standoff=10)
-    fig.update_yaxes(title_standoff=10)
     return fig
 
 # ====================================================
@@ -162,33 +155,19 @@ tab_dist, tab_1d, tab_2d, tab_help = st.tabs(
 with tab_dist:
     st.title("KCHS | 인구·수면·정신건강 분포")
 
-    # 상단 KPI 카드
-    col_k1, col_k2, col_k3 = st.columns(3)
-    if "우울감 경험 여부" in df.columns:
-        dep_rate = (df["우울감 경험 여부"] == "예").mean() * 100
-        col_k1.metric("우울감 경험률", f"{dep_rate:.1f}%")
-    if "주관적 스트레스 수준" in df.columns:
-        high_stress = df["주관적 스트레스 수준"].isin(["대단히 많이 느낀다", "많이 느끼는 편이다"]).mean() * 100
-        col_k2.metric("고스트레스 비율", f"{high_stress:.1f}%")
-    if "하루 평균 수면시간(주중)" in df.columns:
-        avg_sleep = pd.to_numeric(df["하루 평균 수면시간(주중)"], errors="coerce").mean()
-        col_k3.metric("평균 수면시간(주중)", f"{avg_sleep:.2f} 시간")
-
     st.subheader("데이터 미리보기")
     preview_cols = [label for label in column_labels.values() if label in df.columns]
     st.dataframe(df[preview_cols].head(30), use_container_width=True)
 
     if "나이 구간(10살 단위)" in df.columns:
         st.subheader("나이 구간(10살 단위) 분포")
-        fig_age = px.bar(
+        fig_age = px.histogram(
             df,
             x="나이 구간(10살 단위)",
-            color="나이 구간(10살 단위)",
             category_orders={"나이 구간(10살 단위)": age_bins_str},
             color_discrete_sequence=COLOR_CAT,
         )
         fig_age = style_fig(fig_age)
-        fig_age.update_traces(showlegend=False)
         st.plotly_chart(fig_age, use_container_width=True)
 
     if "성별" in df.columns:
@@ -201,7 +180,7 @@ with tab_dist:
             values="count",
             color="성별",
             color_discrete_sequence=COLOR_CAT,
-            hole=0.35,
+            hole=0.3,
         )
         fig_sex = style_fig(fig_sex)
         st.plotly_chart(fig_sex, use_container_width=True)
@@ -209,14 +188,12 @@ with tab_dist:
     for label in ["시도명", "세대 유형", "기초생활수급자 여부"]:
         if label in df.columns:
             st.subheader(f"{label} 분포")
-            fig_cat = px.bar(
+            fig_cat = px.histogram(
                 df,
                 x=label,
-                color=label,
                 color_discrete_sequence=COLOR_CAT,
             )
             fig_cat = style_fig(fig_cat)
-            fig_cat.update_traces(showlegend=False)
             st.plotly_chart(fig_cat, use_container_width=True)
 
     if "식생활 형편" in df.columns:
@@ -228,15 +205,13 @@ with tab_dist:
             response_maps["nue_01z1"][4],
         ]
         present = [v for v in order_food if v in df["식생활 형편"].dropna().unique()]
-        fig_food = px.bar(
+        fig_food = px.histogram(
             df,
             x="식생활 형편",
-            color="식생활 형편",
             category_orders={"식생활 형편": present},
             color_discrete_sequence=COLOR_CAT,
         )
         fig_food = style_fig(fig_food)
-        fig_food.update_traces(showlegend=False)
         st.plotly_chart(fig_food, use_container_width=True)
 
     for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
@@ -249,7 +224,7 @@ with tab_dist:
                     nbins=10,
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_num = style_fig(fig_num, y_title="빈도")
+                fig_num = style_fig(fig_num)
                 st.plotly_chart(fig_num, use_container_width=True)
 
     if "가구소득" in df.columns:
@@ -265,7 +240,7 @@ with tab_dist:
                 color_discrete_sequence=COLOR_CAT,
             )
             fig_soc.update_xaxes(range=[0, 20000])
-            fig_soc = style_fig(fig_soc, y_title="빈도")
+            fig_soc = style_fig(fig_soc)
             st.plotly_chart(fig_soc, use_container_width=True)
 
     for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
@@ -276,14 +251,13 @@ with tab_dist:
                 fig_sleep = px.histogram(
                     x=col_val,
                     nbins=30,
-                    marginal="box",
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sleep = style_fig(fig_sleep, y_title="빈도")
+                fig_sleep = style_fig(fig_sleep)
                 st.plotly_chart(fig_sleep, use_container_width=True)
 
     if "수면 소요시간(분)" in df.columns:
-        st.subheader("수면 소요시간(분) 분포")
+        st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위)")
         sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce").dropna()
         if len(sleep_dur) > 0:
             sleep_dur_clean = sleep_dur[(sleep_dur > 0) & (sleep_dur <= 360)]
@@ -293,15 +267,13 @@ with tab_dist:
                 sleep_bins = pd.cut(
                     sleep_dur_clean, bins=bins, labels=labels, right=False
                 )
-                sleep_df = pd.DataFrame({"수면 소요시간 구간": sleep_bins}).dropna()
-                fig_sd = px.bar(
+                sleep_df = pd.DataFrame({"수면 소요시간(분 구간)": sleep_bins}).dropna()
+                fig_sd = px.histogram(
                     sleep_df,
-                    x="수면 소요시간 구간",
-                    color="수면 소요시간 구간",
+                    x="수면 소요시간(분 구간)",
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sd = style_fig(fig_sd, y_title="빈도")
-                fig_sd.update_traces(showlegend=False)
+                fig_sd = style_fig(fig_sd)
                 st.plotly_chart(fig_sd, use_container_width=True)
 
     for label in ["잠자는 시각", "기상 시각"]:
@@ -309,15 +281,13 @@ with tab_dist:
             times_sorted = time_order_sort(df[label].dropna().unique())
             if len(times_sorted) > 0:
                 st.subheader(f"{label} 분포 (시간순 정렬)")
-                fig_t = px.line(
-                    df[label].value_counts().reindex(times_sorted).reset_index(),
-                    x="index",
-                    y=label,
-                    markers=True,
+                fig_t = px.histogram(
+                    df,
+                    x=label,
+                    category_orders={label: times_sorted},
+                    color_discrete_sequence=COLOR_CAT,
                 )
-                fig_t.update_traces(line_color=COLOR_CAT[0])
-                fig_t = style_fig(fig_t, y_title="빈도")
-                fig_t.update_xaxes(title_text=label)
+                fig_t = style_fig(fig_t)
                 st.plotly_chart(fig_t, use_container_width=True)
 
 # ====================================================
@@ -325,9 +295,6 @@ with tab_dist:
 # ====================================================
 with tab_1d:
     st.title("KCHS | 단일 요인별 정신건강 격차")
-    st.markdown(
-        "###### 한 가지 요인을 기준으로 우울·자살·스트레스 지표가 어떻게 달라지는지 비교합니다."
-    )
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -373,13 +340,12 @@ with tab_1d:
                 dep_candidates.append(label)
 
         target_label = st.selectbox("정신건강 관련 지표 선택", dep_candidates)
-        chart_type = st.radio("표시 방식", ["막대그래프", "선 그래프"], horizontal=True)
 
         df_tmp = df[[x_label, target_label]].copy().dropna()
         if df_tmp.empty:
             st.warning("선택한 요인과 정신건강 지표 조합에 데이터가 없습니다.")
         else:
-            # 요인 가공
+            # 요인 그룹 처리
             if x_label in ["잠자는 시각", "기상 시각"]:
                 group_col = x_label
 
@@ -405,8 +371,8 @@ with tab_1d:
                 df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                 df_tmp = df_tmp.dropna(subset=[x_label, target_label])
                 s = df_tmp[x_label]
-                out_vals = [90000, 99999, 77777, 88888, 9999]
-                s = s[~s.isin(out_vals)]
+                outlier_vals = [90000, 99999, 77777, 88888, 9999]
+                s = s[~s.isin(outlier_vals)]
                 s = s[(s >= 0) & (s <= 20000)]
                 df_tmp = df_tmp.loc[s.index]
                 if df_tmp.empty:
@@ -425,9 +391,7 @@ with tab_1d:
                     df_tmp[x_label] = pd.to_numeric(df_tmp[x_label], errors="coerce")
                     df_tmp = df_tmp.dropna(subset=[x_label, target_label])
                     df_tmp["요인구간"] = pd.cut(
-                        df_tmp[x_label],
-                        bins=bins,
-                        include_lowest=True,
+                        df_tmp[x_label], bins=bins, include_lowest=True
                     )
                     group_col = "요인구간"
                 else:
@@ -442,65 +406,31 @@ with tab_1d:
                 if unique_vals <= {"예", "아니오", "nan"}:
                     df_tmp["is_yes"] = (s == "예").astype(float)
                     res = group_rate(df_tmp, group_col, "is_yes")
-                    y_title = "비율(%)"
                 else:
                     df_tmp[target_label] = pd.to_numeric(
                         df_tmp[target_label], errors="coerce"
                     )
                     res = group_rate(df_tmp, group_col, target_label)
-                    y_title = "평균 코드값"
 
                 if res.empty:
                     st.warning("그룹별 결과가 없습니다.")
                 else:
-                    col_fig, col_tbl = st.columns([2, 1])
-
-                    # 상·하위 그룹 강조용
-                    res_sorted = res.sort_values("값", ascending=False)
-                    top = res_sorted.head(1)
-                    bottom = res_sorted.tail(1)
-
-                    if chart_type == "막대그래프":
-                        fig = px.bar(
-                            res,
-                            x=group_col,
-                            y="값",
-                            color=group_col,
-                            color_discrete_sequence=COLOR_CAT,
-                        )
-                        fig.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-                    else:
-                        fig = px.line(
-                            res,
-                            x=group_col,
-                            y="값",
-                            markers=True,
-                        )
-                        fig.update_traces(line_color=COLOR_CAT[0])
-
-                    fig = style_fig(fig, y_title=y_title)
-                    fig.update_layout(showlegend=False)
-
-                    with col_fig:
-                        st.plotly_chart(fig, use_container_width=True)
-                        st.markdown(
-                            f"- 가장 높은 그룹: **{top.iloc[0][group_col]} ({top.iloc[0]['값']:.1f})**"
-                        )
-                            # bottom과 동일하지 않을 때만 표시
-                        if top.iloc[0][group_col] != bottom.iloc[0][group_col]:
-                            st.markdown(
-                                f"- 가장 낮은 그룹: **{bottom.iloc[0][group_col]} ({bottom.iloc[0]['값']:.1f})**"
-                            )
-
-                    with col_tbl:
-                        st.dataframe(res, use_container_width=True)
+                    fig = px.bar(
+                        res,
+                        x=group_col,
+                        y="값",
+                        color_discrete_sequence=COLOR_CAT,
+                    )
+                    fig.update_traces(texttemplate="%{y:.1f}", textposition="outside")
+                    fig = style_fig(fig)
+                    st.plotly_chart(fig, use_container_width=True)
+                    st.dataframe(res, use_container_width=True)
 
 # ====================================================
 # 탭3: 요인별 2차원 비교
 # ====================================================
 with tab_2d:
     st.title("KCHS | 복수 요인 교차에 따른 정신건강")
-    st.markdown("###### 두 가지 요인의 교차에 따라 정신건강 지표가 어떻게 달라지는지 히트맵으로 봅니다.")
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -580,8 +510,8 @@ with tab_2d:
 
                         if col == "가구소득":
                             s = pd.to_numeric(series, errors="coerce")
-                            out_vals = [90000, 99999, 77777, 88888, 9999]
-                            s = s[~s.isin(out_vals)]
+                            outlier_vals = [90000, 99999, 77777, 88888, 9999]
+                            s = s[~s.isin(outlier_vals)]
                             s = s[(s >= 0) & (s <= 20000)]
                             df_sub = df_in.loc[s.index].copy()
                             bins = list(range(0, 20001, 2000))
@@ -622,12 +552,12 @@ with tab_2d:
                             value_col = target_label
                             is_binary = False
 
-                        tmp = df_tmp[[new_col1, new_col2, value_col]].dropna()
-                        if tmp.empty:
+                        tmp2 = df_tmp[[new_col1, new_col2, value_col]].dropna()
+                        if tmp2.empty:
                             st.warning("선택한 요인 조합에 대해 계산 가능한 데이터가 없습니다.")
                         else:
                             pivot = (
-                                tmp.groupby([new_col1, new_col2])[value_col]
+                                tmp2.groupby([new_col1, new_col2])[value_col]
                                 .mean()
                                 .reset_index()
                             )
@@ -639,32 +569,23 @@ with tab_2d:
                                 z_label = "평균 코드값"
 
                             heat = pivot.pivot(index=new_col1, columns=new_col2, values="값")
-
-                            col_h_fig, col_h_tbl = st.columns([2, 1])
-                            with col_h_tbl:
-                                st.markdown("#### 교차표")
-                                st.dataframe(heat, use_container_width=True)
-
-                            with col_h_fig:
-                                fig_h = px.imshow(
-                                    heat,
-                                    text_auto=".1f",
-                                    aspect="auto",
-                                    color_continuous_scale=COLOR_SEQ,
-                                    labels=dict(color=z_label),
-                                    title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
-                                )
-                                fig_h = style_fig(fig_h)
-                                st.plotly_chart(fig_h, use_container_width=True)
+                            fig_h = px.imshow(
+                                heat,
+                                text_auto=".1f",
+                                aspect="auto",
+                                labels=dict(color=z_label),
+                                color_continuous_scale="Blues",
+                                title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
+                            )
+                            fig_h = style_fig(fig_h)
+                            st.plotly_chart(fig_h, use_container_width=True)
+                            st.dataframe(heat, use_container_width=True)
 
 # ====================================================
 # 탭4: 상담 이용률 (우울/자살/스트레스 기준)
 # ====================================================
 with tab_help:
     st.title("KCHS | 정신건강 서비스 접근성과 자가진단")
-    st.markdown(
-        "###### 문제를 경험한 사람들 중 실제로 상담을 받은 비율을 통해 자가진단과 서비스 접근성을 살펴봅니다."
-    )
 
     if len(df) == 0:
         st.warning("데이터가 없습니다.")
@@ -755,8 +676,8 @@ with tab_help:
                         tmp[axis] = pd.to_numeric(tmp[axis], errors="coerce")
                         tmp = tmp.dropna(subset=[axis, help_col])
                         s = tmp[axis]
-                        out_vals = [90000, 99999, 77777, 88888, 9999]
-                        s = s[~s.isin(out_vals)]
+                        outlier_vals = [90000, 99999, 77777, 88888, 9999]
+                        s = s[~s.isin(outlier_vals)]
                         s = s[(s >= 0) & (s <= 20000)]
                         tmp = tmp.loc[s.index]
                         bins = list(range(0, 20001, 2000))
@@ -786,41 +707,13 @@ with tab_help:
                         if res.empty:
                             st.warning("그룹별 상담 이용률을 계산할 수 없습니다.")
                         else:
-                            col_fig, col_tbl = st.columns([2, 1])
-
-                            res_sorted = res.sort_values("값", ascending=False)
-                            top = res_sorted.head(1)
-                            bottom = res_sorted.tail(1)
-
-                            res["상태"] = np.where(
-                                res["값"] >= 50, "50% 이상", "50% 미만"
-                            )
-
                             fig = px.bar(
                                 res,
                                 x=group_col,
                                 y="값",
-                                color="상태",
-                                color_discrete_map={
-                                    "50% 이상": "#EF553B",
-                                    "50% 미만": COLOR_CAT[0],
-                                },
+                                color_discrete_sequence=COLOR_CAT,
                             )
                             fig.update_traces(texttemplate="%{y:.1f}", textposition="outside")
-                            fig = style_fig(fig, y_title="상담 '예' 비율(%)")
-
-                            with col_fig:
-                                st.plotly_chart(fig, use_container_width=True)
-                                st.markdown(
-                                    f"- 상담 이용률이 가장 높은 그룹: **{top.iloc[0][group_col]} ({top.iloc[0]['값']:.1f}%)**"
-                                )
-                                if top.iloc[0][group_col] != bottom.iloc[0][group_col]:
-                                    st.markdown(
-                                        f"- 상담 이용률이 가장 낮은 그룹: **{bottom.iloc[0][group_col]} ({bottom.iloc[0]['값']:.1f}%)**"
-                                    )
-
-                            with col_tbl:
-                                st.dataframe(
-                                    res[[group_col, "표본수", "값"]],
-                                    use_container_width=True,
-                                )
+                            fig = style_fig(fig)
+                            st.plotly_chart(fig, use_container_width=True)
+                            st.dataframe(res, use_container_width=True)
