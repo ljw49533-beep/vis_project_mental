@@ -132,12 +132,13 @@ def group_rate(df_in, group_col, target_col):
         grp["값"] = grp["값"] * 100
     return grp
 
-# 공통 layout 살짝 손보기
+# 공통 layout
 def style_fig(fig):
     fig.update_layout(
         font=dict(size=13),
         title_font_size=18,
         margin=dict(t=60, l=40, r=20, b=60),
+        showlegend=False,  # 여기서 legend 전체 비활성화 → 'undefined' 제거[web:46]
     )
     return fig
 
@@ -345,7 +346,6 @@ with tab_1d:
         if df_tmp.empty:
             st.warning("선택한 요인과 정신건강 지표 조합에 데이터가 없습니다.")
         else:
-            # 요인 그룹 처리
             if x_label in ["잠자는 시각", "기상 시각"]:
                 group_col = x_label
 
