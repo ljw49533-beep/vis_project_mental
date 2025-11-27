@@ -132,13 +132,15 @@ def group_rate(df_in, group_col, target_col):
         grp["값"] = grp["값"] * 100
     return grp
 
-# 공통 layout
+# 공통 layout: trace 이름/legend/legend title 제거
 def style_fig(fig):
+    fig.for_each_trace(lambda t: t.update(name=""))  # trace name 비우기[web:46]
     fig.update_layout(
         font=dict(size=13),
         title_font_size=18,
         margin=dict(t=60, l=40, r=20, b=60),
-        showlegend=False,  # 여기서 legend 전체 비활성화 → 'undefined' 제거[web:46]
+        showlegend=False,
+        legend_title_text="",
     )
     return fig
 
@@ -577,6 +579,8 @@ with tab_2d:
                                 color_continuous_scale="Blues",
                                 title=f"{axis1} × {axis2} 에 따른 {target_label} ({z_label})",
                             )
+                            # colorbar 제목도 비우기
+                            fig_h.update_coloraxes(colorbar_title_text="")
                             fig_h = style_fig(fig_h)
                             st.plotly_chart(fig_h, use_container_width=True)
                             st.dataframe(heat, use_container_width=True)
