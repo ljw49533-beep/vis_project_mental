@@ -169,9 +169,10 @@ with tab_dist:
             df,
             x="나이 구간(10살 단위)",
             category_orders={"나이 구간(10살 단위)": age_bins_str},
+            labels={"나이 구간(10살 단위)": "나이 구간 (10살 단위)"},
             color_discrete_sequence=COLOR_CAT,
         )
-        fig_age = style_fig(fig_age, y_title="빈도")
+        fig_age = style_fig(fig_age, y_title="인원 수")
         st.plotly_chart(fig_age, use_container_width=True)
 
     if "성별" in df.columns:
@@ -195,9 +196,10 @@ with tab_dist:
             fig_cat = px.histogram(
                 df,
                 x=label,
+                labels={label: label},
                 color_discrete_sequence=COLOR_CAT,
             )
-            fig_cat = style_fig(fig_cat, y_title="빈도")
+            fig_cat = style_fig(fig_cat, y_title="인원 수")
             st.plotly_chart(fig_cat, use_container_width=True)
 
     if "식생활 형편" in df.columns:
@@ -213,24 +215,30 @@ with tab_dist:
             df,
             x="식생활 형편",
             category_orders={"식생활 형편": present},
+            labels={"식생활 형편": "식생활 형편"},
             color_discrete_sequence=COLOR_CAT,
         )
-        fig_food = style_fig(fig_food, y_title="빈도")
+        fig_food = style_fig(fig_food, y_title="인원 수")
         st.plotly_chart(fig_food, use_container_width=True)
 
+    # --- 가구원수 전체 / 만 19세 이상 ---
     for label in ["가구원수 전체", "가구원수 만 19세 이상"]:
         if label in df.columns:
             st.subheader(f"{label} 분포")
             col_val = pd.to_numeric(df[label], errors="coerce").dropna()
             if len(col_val) > 0:
+                tmp = pd.DataFrame({label: col_val})
                 fig_num = px.histogram(
-                    x=col_val,
+                    tmp,
+                    x=label,
                     nbins=10,
+                    labels={label: f"{label} (명)"},
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_num = style_fig(fig_num, y_title="빈도")
+                fig_num = style_fig(fig_num, y_title="가구 수")
                 st.plotly_chart(fig_num, use_container_width=True)
 
+    # --- 가구소득 ---
     if "가구소득" in df.columns:
         st.subheader("가구소득 분포 (0~20000만원)")
         soc_col = pd.to_numeric(df["가구소득"], errors="coerce")
@@ -238,28 +246,36 @@ with tab_dist:
         soc_clean = soc_col[~soc_col.isin(outlier_vals)]
         soc_clean = soc_clean[(soc_clean >= 0) & (soc_clean <= 20000)]
         if len(soc_clean) > 0:
+            tmp = pd.DataFrame({"가구소득(만원)": soc_clean})
             fig_soc = px.histogram(
-                x=soc_clean,
+                tmp,
+                x="가구소득(만원)",
                 nbins=40,
+                labels={"가구소득(만원)": "가구소득 (만원)"},
                 color_discrete_sequence=COLOR_CAT,
             )
             fig_soc.update_xaxes(range=[0, 20000])
-            fig_soc = style_fig(fig_soc, y_title="빈도")
+            fig_soc = style_fig(fig_soc, y_title="가구 수")
             st.plotly_chart(fig_soc, use_container_width=True)
 
+    # --- 하루 평균 수면시간(주중/주말) ---
     for label in ["하루 평균 수면시간(주중)", "하루 평균 수면시간(주말)"]:
         if label in df.columns:
             st.subheader(f"{label} 분포")
             col_val = pd.to_numeric(df[label], errors="coerce").dropna()
             if len(col_val) > 0:
+                tmp = pd.DataFrame({label: col_val})
                 fig_sleep = px.histogram(
-                    x=col_val,
+                    tmp,
+                    x=label,
                     nbins=30,
+                    labels={label: f"{label} (시간)"},
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sleep = style_fig(fig_sleep, y_title="빈도")
+                fig_sleep = style_fig(fig_sleep, y_title="인원 수")
                 st.plotly_chart(fig_sleep, use_container_width=True)
 
+    # --- 수면 소요시간(분) ---
     if "수면 소요시간(분)" in df.columns:
         st.subheader("수면 소요시간(분) 분포 (0~360분, 15분 단위)")
         sleep_dur = pd.to_numeric(df["수면 소요시간(분)"], errors="coerce").dropna()
@@ -275,11 +291,13 @@ with tab_dist:
                 fig_sd = px.histogram(
                     sleep_df,
                     x="수면 소요시간(분 구간)",
+                    labels={"수면 소요시간(분 구간)": "수면 소요시간 (분, 15분 단위)"},
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_sd = style_fig(fig_sd, y_title="빈도")
+                fig_sd = style_fig(fig_sd, y_title="인원 수")
                 st.plotly_chart(fig_sd, use_container_width=True)
 
+    # --- 잠자는 시각 / 기상 시각 ---
     for label in ["잠자는 시각", "기상 시각"]:
         if label in df.columns:
             times_sorted = time_order_sort(df[label].dropna().unique())
@@ -289,10 +307,32 @@ with tab_dist:
                     df,
                     x=label,
                     category_orders={label: times_sorted},
+                    labels={label: f"{label} (시:분)"},
                     color_discrete_sequence=COLOR_CAT,
                 )
-                fig_t = style_fig(fig_t, y_title="빈도")
+                fig_t = style_fig(fig_t, y_title="인원 수")
                 st.plotly_chart(fig_t, use_container_width=True)
+                
+    # --- 변수 정의 공식 문서 안내 ---
+    st.markdown("### 변수 코드 및 정의 출처 안내")
+
+    st.markdown(
+        """
+지역사회건강조사(KCHS) 2024년 원시자료에 포함된 각 변수의 공식 정의와 코드값은  
+질병관리청에서 제공하는 **「지역사회건강조사 2024년 원시자료 이용지침서 및 참고자료」**를 참고해야 합니다.
+
+1. 아래 링크를 클릭하여 질병관리청 지역사회건강조사 누리집에 접속합니다.  
+   - https://chs.kdca.go.kr/chs/mnl/mnlBoardMain.do
+2. 화면에서 **「원시자료 이용지침서」** 메뉴 중  
+   **「지역사회건강조사 2024년 원시자료 이용지침서 및 참고자료」**를 선택하여 PDF를 내려받습니다.
+3. PDF의 **변수설명서(예: 55–63쪽, 102–115쪽)**에서  
+   이 대시보드에서 사용하는 변수(fma_19z3, fma_13z1, nue_01z1, mtc_17z1, mta_01z1, mtb_01z1, mtd_01z1 등)의  
+   정확한 문항 내용과 코드값 의미를 확인할 수 있습니다.
+
+※ 이 대시보드는 공식 지침서를 요약하여 변수명을 한글 라벨로만 표시하며,  
+   **상세 코드북 내용과 조사 문항 원문은 반드시 질병관리청에서 제공하는 공식 PDF를 기준으로 해석해야 합니다.**
+"""
+    )
 
 # ====================================================
 # 탭2: 요인별 1차원 비교
